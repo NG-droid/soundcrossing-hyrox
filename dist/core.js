@@ -170,6 +170,22 @@ var Pace;
     Pace.timeOfDay = timeOfDay;
     function departureAt(race, entry) { return entry.startedAt ?? plannedAt(race, entry); }
     Pace.departureAt = departureAt;
+    function captureEdit(session, kind, id, raceId = '') {
+        const entry = kind === 'entry' ? session.entries.find(e => e.id === id) : undefined;
+        const targetRaceId = kind === 'race' ? id : entry?.raceId ?? raceId;
+        const race = session.races.find(r => r.id === targetRaceId) ?? null;
+        const value = JSON.stringify(kind === 'race'
+            ? { race, entries: id ? session.entries.filter(e => e.raceId === id) : [] }
+            : { race, entry: entry ?? null });
+        return { kind, id, raceId: targetRaceId, value };
+    }
+    Pace.captureEdit = captureEdit;
+    function assertEditUnchanged(session, snapshot) {
+        if (captureEdit(session, snapshot.kind, snapshot.id, snapshot.raceId).value !== snapshot.value) {
+            throw Error('Les données de ce formulaire ont changé. Fermez-le puis rouvrez-le pour utiliser la version à jour.');
+        }
+    }
+    Pace.assertEditUnchanged = assertEditUnchanged;
     function ranking(entries) {
         const sorted = entries.filter(e => e.status === 'finished' && e.durationMs !== null).sort((a, b) => a.durationMs - b.durationMs || label(a).localeCompare(label(b), 'fr'));
         let rank = 0;
@@ -249,6 +265,21 @@ var Pace;
         return { startedAt, arrivedAt: startedAt + durationMs, durationMs };
     }
     Pace.calculateDuration = calculateDuration;
+    function calculateResultArrival(race, entry, value, capture = null) {
+        const time = parseScheduled(value), fullTime = time.length === 5 ? `${time}:00` : time;
+        const departure = departureAt(race, entry);
+        if (departure === null)
+            throw Error('Renseignez d’abord l’heure de départ dans l’inscription.');
+        if (entry.arrivedAt !== null && departure !== null && timeOfDay(entry.arrivedAt) === fullTime) {
+            return { startedAt: departure, arrivedAt: entry.arrivedAt, durationMs: entry.arrivedAt - departure };
+        }
+        if (entry.durationMs !== null && entry.durationMs > 24 * 3600000)
+            throw Error('Pour ce résultat supérieur à 24 heures, utilisez la saisie du temps total.');
+        const existingNextDay = entry.arrivedAt !== null && departure !== null && localDate(new Date(entry.arrivedAt)) !== localDate(new Date(departure));
+        const nextDay = capture?.arrivalTime === fullTime ? capture.nextDay : existingNextDay && fullTime < timeOfDay(departure);
+        return calculateArrival(race, entry, time, nextDay);
+    }
+    Pace.calculateResultArrival = calculateResultArrival;
     function encodeCSV(rows) {
         const cell = (value) => {
             let text = String(value ?? '');

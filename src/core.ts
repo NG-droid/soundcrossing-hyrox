@@ -110,6 +110,20 @@ namespace Pace {
     return [date.getHours(), date.getMinutes(), date.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
   }
   export function departureAt(race: Race, entry: Entry): number | null { return entry.startedAt ?? plannedAt(race, entry); }
+  export function captureEdit(session: Session, kind: EditSnapshot['kind'], id: string, raceId = ''): EditSnapshot {
+    const entry = kind === 'entry' ? session.entries.find(e => e.id === id) : undefined;
+    const targetRaceId = kind === 'race' ? id : entry?.raceId ?? raceId;
+    const race = session.races.find(r => r.id === targetRaceId) ?? null;
+    const value = JSON.stringify(kind === 'race'
+      ? { race, entries: id ? session.entries.filter(e => e.raceId === id) : [] }
+      : { race, entry: entry ?? null });
+    return { kind, id, raceId: targetRaceId, value };
+  }
+  export function assertEditUnchanged(session: Session, snapshot: EditSnapshot): void {
+    if (captureEdit(session, snapshot.kind, snapshot.id, snapshot.raceId).value !== snapshot.value) {
+      throw Error('Les données de ce formulaire ont changé. Fermez-le puis rouvrez-le pour utiliser la version à jour.');
+    }
+  }
   export function ranking(entries: Entry[]): { entry: Entry; rank: number }[] {
     const sorted = entries.filter(e => e.status === 'finished' && e.durationMs !== null).sort((a, b) => a.durationMs! - b.durationMs! || label(a).localeCompare(label(b), 'fr'));
     let rank = 0;
@@ -165,6 +179,18 @@ namespace Pace {
     if (durationMs === null) throw Error('Saisissez le temps total. Exemple : 1h00min30s.');
     const startedAt = Math.floor(departure / 1000) * 1000;
     return { startedAt, arrivedAt: startedAt + durationMs, durationMs };
+  }
+  export function calculateResultArrival(race: Race, entry: Entry, value: string, capture: ArrivalCapture | null = null): ArrivalResult {
+    const time = parseScheduled(value), fullTime = time.length === 5 ? `${time}:00` : time;
+    const departure = departureAt(race, entry);
+    if (departure === null) throw Error('Renseignez d’abord l’heure de départ dans l’inscription.');
+    if (entry.arrivedAt !== null && departure !== null && timeOfDay(entry.arrivedAt) === fullTime) {
+      return { startedAt: departure, arrivedAt: entry.arrivedAt, durationMs: entry.arrivedAt - departure };
+    }
+    if (entry.durationMs !== null && entry.durationMs > 24 * 3600000) throw Error('Pour ce résultat supérieur à 24 heures, utilisez la saisie du temps total.');
+    const existingNextDay = entry.arrivedAt !== null && departure !== null && localDate(new Date(entry.arrivedAt)) !== localDate(new Date(departure));
+    const nextDay = capture?.arrivalTime === fullTime ? capture.nextDay : existingNextDay && fullTime < timeOfDay(departure);
+    return calculateArrival(race, entry, time, nextDay);
   }
   export function encodeCSV(rows: (string | number | null)[][]): string {
     const cell = (value: string | number | null): string => {

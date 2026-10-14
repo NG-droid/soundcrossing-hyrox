@@ -22,6 +22,12 @@ Le dépôt conserve le code et son historique. Les sauvegardes des participants,
 - Photo finish : bloc centré avec grand logo, nom d’événement, date complète, noms de même importance et temps unique. Les trois thèmes partagent cette disposition.
 - Podium final par catégorie : marches noires 2/1/3, accents or/argent/bronze, logo et repères rouges Soundcrossing, noms et temps. Accessible par « Top 3 final » sous le tableau ; Échap revient directement à la liste.
 
+## Corrections de fiabilité (V4.10)
+
+Un formulaire dont l’inscription ou l’événement a changé depuis son ouverture refuse la sauvegarde : fermez-le puis rouvrez-le pour récupérer la version à jour. Les modifications de participants sans lien avec le formulaire restent autorisées. Le mode de saisie du résultat est conservé lors d’une correction de nom.
+
+La correction horaire d’une arrivée enregistrée après minuit peut revenir au jour du départ lorsque la nouvelle heure est après le départ. Pour une nouvelle arrivée après minuit ou une durée supérieure à 24 h, utilisez Temps total. La restauration reste possible après suppression du stockage, tout en refusant de remplacer une session plus récente apparue après la demande de confirmation.
+
 ## Migration et protection
 
 Les sauvegardes V1/V2/V3 sont lues et migrées en V4 : les anciennes courses de formats différents sont réunies par date. Les ids des inscriptions, les noms, départs, arrivées, temps, statuts et les instantanés d’historique sont préservés. Les titres précédents restent dans `previousTitles`. Un solo sans catégorie garde une catégorie vide et apparaît « Solo à préciser » ; aucune catégorie n’est devinée. Une arrivée inconnue reste vide.

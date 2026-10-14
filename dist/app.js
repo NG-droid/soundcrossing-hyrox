@@ -24,6 +24,7 @@ var PaceApp;
     let resultMode = 'arrival', capturedArrival = null;
     let arrivalDraft = '';
     let durationFields = { hours: '', minutes: '00', seconds: '00' };
+    const editSnapshots = new WeakMap();
     const formatOptions = [{ key: 'H', label: 'Solo H' }, { key: 'F', label: 'Solo F' }, { key: 'HH', label: 'Duo HH' }, { key: 'FF', label: 'Duo FF' }, { key: 'HF', label: 'Duo HF' }, { key: 'SOLO', label: 'Solo à préciser' }];
     let toastTimer, confirmation = null;
     let importBook = null, sourceRows = [], headers = [], preview = [];
@@ -85,12 +86,12 @@ var PaceApp;
         }
         catch { /* Le choix de vue ne bloque pas les données. */ }
     }
-    function persist(candidate, allowRecovery = false) {
+    function persist(candidate, allowRecovery = false, expectedRaw = loadedRaw) {
         try {
             if (storageBlocked && !allowRecovery)
                 throw Error('Stockage bloqué. Restaurez une sauvegarde avant de modifier la session.');
-            if (localStorage.getItem(KEY) !== loadedRaw) {
-                const latest = localStorage.getItem(KEY);
+            const latest = localStorage.getItem(KEY);
+            if (latest !== expectedRaw && !(allowRecovery && latest === null)) {
                 if (latest) {
                     state = validateStore(JSON.parse(latest));
                     loadedRaw = latest;
@@ -99,15 +100,15 @@ var PaceApp;
                 throw Error('La session a changé dans une autre fenêtre. Vérifiez la liste puis recommencez.');
             }
             const validated = validateStore(candidate);
-            if (loadedRaw) {
+            if (latest || allowRecovery && state.session.entries.length) {
                 let old;
                 try {
-                    old = validateStore(JSON.parse(loadedRaw));
+                    old = latest ? validateStore(JSON.parse(latest)) : validateStore(clone(state));
                 }
                 catch {
                     if (!allowRecovery)
                         throw Error('Sauvegarde actuelle invalide.');
-                    old = fresh();
+                    old = validateStore(clone(state));
                 }
                 old.history = [];
                 localStorage.setItem(BACKUP, JSON.stringify(old));
@@ -137,8 +138,16 @@ var PaceApp;
             return false;
         }
     }
-    function commit(description, mutate) {
+    function assertDraftCurrent(form) {
+        const snapshot = editSnapshots.get(form);
+        if (!snapshot)
+            throw Error('Rouvrez ce formulaire avant d’enregistrer.');
+        Pace.assertEditUnchanged(state.session, snapshot);
+    }
+    function commit(description, mutate, form) {
         try {
+            if (form)
+                assertDraftCurrent(form);
             const candidate = clone(state);
             mutate(candidate.session);
             candidate.session = validateSession(candidate.session);
@@ -146,13 +155,21 @@ var PaceApp;
             candidate.history = candidate.history.slice(-15);
             candidate.revision = crypto.randomUUID();
             candidate.savedAt = Date.now();
-            if (!persist(candidate))
+            if (!persist(candidate)) {
+                const error = form?.querySelector('.form-error');
+                if (error)
+                    error.textContent = $('toast').textContent;
                 return false;
+            }
             render();
             return true;
         }
         catch (error) {
-            toast(error instanceof Error ? error.message : 'Modification impossible.', true);
+            const message = error instanceof Error ? error.message : 'Modification impossible.';
+            const fieldError = form?.querySelector('.form-error');
+            if (fieldError)
+                fieldError.textContent = message;
+            toast(message, true);
             return false;
         }
     }
@@ -322,6 +339,7 @@ var PaceApp;
         field(form, 'id').value = race?.id ?? '';
         field(form, 'title').value = race?.title ?? 'Soundcrossing';
         field(form, 'date').value = race?.date ?? localDate();
+        editSnapshots.set(form, Pace.captureEdit(state.session, 'race', race?.id ?? ''));
         if (race)
             form.querySelector(`[name="format"][value="${race.format}"]`).checked = true;
         $('race-dialog-title').textContent = race ? 'Modifier l’événement' : 'Créer un événement';
@@ -333,6 +351,7 @@ var PaceApp;
         event.preventDefault();
         const form = $('session-form');
         try {
+            assertDraftCurrent(form);
             const id = field(form, 'id').value, old = state.session.races.find(race => race.id === id);
             const format = new FormData(form).get('format');
             if (format !== 'SOLO' && format !== 'DUO' && format !== 'MIXED')
@@ -353,7 +372,7 @@ var PaceApp;
                     session.races[index] = race;
                 else
                     session.races.push(race);
-            })) {
+            }, form)) {
                 focusId = '';
                 activeFormat = 'all';
                 rememberEvent();
@@ -379,6 +398,7 @@ var PaceApp;
         const entry = entryById(id), race = entry ? state.session.races.find(r => r.id === entry.raceId) : currentRace();
         field(form, 'id').value = entry?.id ?? '';
         field(form, 'raceId').value = race.id;
+        editSnapshots.set(form, Pace.captureEdit(state.session, 'entry', entry?.id ?? '', race.id));
         $('entry-title').textContent = entry ? 'Modifier l’inscription' : race.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
         $('entry-format-choice').hidden = race.format !== 'MIXED';
         $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
@@ -402,6 +422,7 @@ var PaceApp;
         event.preventDefault();
         const form = $('entry-form'), get = (name) => field(form, name).value.trim();
         try {
+            assertDraftCurrent(form);
             const old = entryById(get('id')), race = state.session.races.find(r => r.id === get('raceId'));
             if (!race)
                 throw Error('La course n’existe plus.');
@@ -419,7 +440,7 @@ var PaceApp;
             const format = selectedEntryFormat;
             Pace.assertRaceFormat(race, format);
             const category = Pace.categoryFromGenders(format, selectedGender1, selectedGender2);
-            const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt: old?.arrivedAt ?? null, durationMs, status: old?.status ?? 'waiting' });
+            const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt: old?.arrivedAt ?? null, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
             if (state.session.entries.some(e => e.id !== entry.id && identity(e) === identity(entry)))
                 throw Error('Ce participant ou duo est déjà inscrit à cette course.');
             if (!old && state.session.entries.length >= Pace.MAX_ENTRIES)
@@ -438,7 +459,7 @@ var PaceApp;
                 session.entries[index] = entry;
             else
                 session.entries.push(entry);
-        });
+        }, $('entry-form'));
         if (success) {
             lastEntryFormats.set(entry.raceId, `${entry.format}_${entry.category}`);
             focusId = entry.id;
@@ -471,6 +492,7 @@ var PaceApp;
         const form = $('result-form');
         form.reset();
         field(form, 'id').value = id;
+        editSnapshots.set(form, Pace.captureEdit(state.session, 'entry', entry.id, race.id));
         capturedArrival = null;
         arrivalDraft = entry.arrivedAt === null ? '' : Pace.timeOfDay(entry.arrivedAt);
         const parts = (entry.durationMs === null ? '' : clock(entry.durationMs)).split(':');
@@ -510,17 +532,8 @@ var PaceApp;
         if (resultMode === 'duration')
             return Pace.calculateDuration(race, entry, Pace.durationFromFields(durationFields));
         const value = field($('result-form'), 'arrival').value;
-        const time = Pace.parseScheduled(value), fullTime = time.length === 5 ? `${time}:00` : time;
-        const departure = Pace.departureAt(race, entry);
-        if (entry.arrivedAt !== null && departure !== null && Pace.timeOfDay(entry.arrivedAt) === fullTime) {
-            return { startedAt: departure, arrivedAt: entry.arrivedAt, durationMs: entry.arrivedAt - departure };
-        }
-        if (entry.durationMs !== null && entry.durationMs > 24 * 3600000)
-            throw Error('Pour ce résultat supérieur à 24 heures, utilisez la saisie du temps total.');
-        const existingNextDay = entry.arrivedAt !== null && departure !== null && localDate(new Date(entry.arrivedAt)) !== localDate(new Date(departure));
-        const nextDay = capturedArrival?.arrivalTime === fullTime ? capturedArrival.nextDay : existingNextDay;
         try {
-            return Pace.calculateArrival(race, entry, time, nextDay);
+            return Pace.calculateResultArrival(race, entry, value, capturedArrival);
         }
         catch (error) {
             if (error instanceof Error && error.message.includes('après minuit'))
@@ -568,12 +581,13 @@ var PaceApp;
         event.preventDefault();
         const form = $('result-form'), id = field(form, 'id').value;
         try {
+            assertDraftCurrent(form);
             const entry = entryById(id);
             if (!entry)
                 throw Error('Participant introuvable.');
             const race = state.session.races.find(r => r.id === entry.raceId);
             const result = resultFromInput(entry, race);
-            if (commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); Object.assign(e, result); e.status = 'finished'; e.resultMode = resultMode; })) {
+            if (commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); Object.assign(e, result); e.status = 'finished'; e.resultMode = resultMode; }, form)) {
                 $('result-dialog').close();
                 if (event.submitter?.dataset.afterSave === 'photo')
                     openPhoto(id);
@@ -604,7 +618,15 @@ var PaceApp;
         $('photo-time').textContent = clock(e.durationMs);
     }
     function recordOutcome(status) {
-        const entry = entryById(field($('result-form'), 'id').value);
+        const form = $('result-form');
+        try {
+            assertDraftCurrent(form);
+        }
+        catch (error) {
+            $('result-error').textContent = error instanceof Error ? error.message : 'Rouvrez ce formulaire.';
+            return;
+        }
+        const entry = entryById(field(form, 'id').value);
         if (!entry)
             return;
         const next = Pace.setOutcome(entry, status), caption = status === 'waiting' ? 'Remettre en course' : Pace.statusLabel(next);
@@ -612,7 +634,7 @@ var PaceApp;
             if (commit(`${caption} : ${label(entry)}`, session => {
                 const current = session.entries.find(e => e.id === entry.id);
                 Object.assign(current, Pace.setOutcome(current, status));
-            })) {
+            }, form)) {
                 $('result-dialog').close();
                 toast(`${caption} enregistré. Vous pouvez annuler cette modification.`);
             }
@@ -878,11 +900,12 @@ var PaceApp;
             if (file.size > 15 * 1024 * 1024)
                 throw Error('Sauvegarde trop volumineuse.');
             const imported = validateStore(JSON.parse(await file.text()));
+            const expectedRaw = localStorage.getItem(KEY);
             ask('Restaurer cette session ?', `« ${imported.session.title} » contient ${imported.session.entries.length} départs. La liste actuelle sera remplacée. Une sauvegarde de la session actuelle sera téléchargée avant le remplacement.`, () => {
                 exportBackup();
                 imported.revision = crypto.randomUUID();
                 imported.savedAt = Date.now();
-                if (persist(imported, true)) {
+                if (persist(imported, true, expectedRaw)) {
                     focusId = '';
                     selectedRaceId = '';
                     render();
@@ -1029,7 +1052,7 @@ var PaceApp;
         if (!entry)
             return;
         ask('Retirer le résultat ?', 'L’heure de départ sera conservée. L’arrivée et le temps total seront retirés du classement.', () => {
-            if (commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; }))
+            if (commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; }, $('result-form')))
                 $('result-dialog').close();
         }, 'Retirer le résultat');
     });
@@ -1038,7 +1061,7 @@ var PaceApp;
         if (!e)
             return;
         ask('Supprimer cette ligne ?', `L’inscription de ${label(e)}, ses horaires et son résultat seront supprimés. La commande Annuler permet de revenir en arrière.`, () => {
-            if (commit(`suppression de ${label(e)}`, session => { session.entries = session.entries.filter(item => item.id !== id); }))
+            if (commit(`suppression de ${label(e)}`, session => { session.entries = session.entries.filter(item => item.id !== id); }, $('entry-form')))
                 $('entry-dialog').close();
         }, 'Supprimer');
     });
@@ -1078,12 +1101,15 @@ var PaceApp;
             closePresentation();
     });
     window.addEventListener('storage', event => {
-        if (event.key !== KEY)
+        if (event.key !== KEY && event.key !== null)
             return;
         try {
-            if (event.newValue) {
-                state = validateStore(JSON.parse(event.newValue));
-                loadedRaw = event.newValue;
+            const latest = localStorage.getItem(KEY);
+            if (latest === loadedRaw)
+                return;
+            loadedRaw = latest;
+            if (latest) {
+                state = validateStore(JSON.parse(latest));
                 storageBlocked = false;
                 render();
                 savedStatus();

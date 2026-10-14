@@ -1,3 +1,14 @@
+# Corrections de l’audit (V4.10.0) — 14 octobre 2026
+
+- Brouillons protégés par un instantané de l’inscription et de son événement, sans changer le schéma de sauvegarde. Résultat, inscription, événement, forfait, retrait de résultat et suppression vérifient leur contexte avant l’écriture, y compris après confirmation. Une modification sans lien avec le formulaire n’empêche pas sa sauvegarde.
+- Correction après minuit : départ 23:30, arrivée précédente 00:30 le lendemain, correction vers 23:45 → 00:15:00 le jour du départ. Une correction vers 00:15 garde le lendemain et donne 45 min. Horaires inchangés et anciennes durées >24 h préservés ; nouvelle arrivée avant le départ toujours guidée vers Temps total.
+- Mode Temps total conservé lors de l’édition de l’inscription. Restauration autorisée quand le stockage a été supprimé ; une session valide plus récente apparue entre demande et confirmation n’est pas écrasée. Les événements storage avec key=null (clear) sont traités et l’état effectivement stocké est relu.
+- QA HTTP 8770 fictive : correction 15 min vérifiée dans le navigateur ; deux fenêtres avec un formulaire ancien, résultat 2 h sauvegardé ailleurs, ancien formulaire refusé et résultat 2 h intact ; modification du nom puis réouverture conserve Temps total. Captures aperçus/correction-minuit-v4-10.jpg et conflit-formulaire-v4-10.jpg.
+- 59 tests réussis (48 existants, 11 nouveaux) et compilation stricte : protection des brouillons, changements sans lien, perte d’événement, cas horaires, fonctions réelles de persistance/restauration et édition de nom. Restauration après suppression et conflit pendant confirmation contrôlés dans un environnement de test, sans suppression du stockage réel du navigateur.
+- Archives locale et Windows reconstruites ; trois tests de distribution Windows réussis. Lancement natif sur PC Windows toujours à vérifier. Les inscriptions réelles n’ont pas été manipulées ; actualiser manuellement l’onglet file://.
+
+---
+
 # Libellés de création cohérents (V4.9.1) — 14 octobre 2026
 
 - Session sans événement : « Créer un événement » à tous les points d’entrée. Dès qu’un événement existe, le bouton d’en-tête indique « Nouvel événement », même si sa liste de participants est encore vide. Libellé HTML initial cohérent avec le rendu.

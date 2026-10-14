@@ -431,3 +431,45 @@ test('arrival now accounts for a DST night and refuses an ambiguous repeated hou
   const result = JSON.parse(child.stdout);
   assert.equal(result.duration, 19800000); assert.equal(result.nextDay, true); assert.match(result.error, /ambiguë/);
 });
+
+test('edit snapshots reject changed results, deleted entries and changed event formats', () => {
+  const r = P.validateRace(race()), e = P.validateEntry(entry({ raceId: r.id }));
+  const s = { ...session([e]), races: [r] };
+  const snapshot = P.captureEdit(s, 'entry', e.id, r.id);
+  const changed = structuredClone(s);
+  changed.entries[0] = P.validateEntry({ ...e, status: 'finished', durationMs: 3600000 });
+  assert.throws(() => P.assertEditUnchanged(changed, snapshot), /formulaire ont changé/);
+  assert.throws(() => P.assertEditUnchanged({ ...s, entries: [] }, snapshot), /formulaire ont changé/);
+  assert.throws(() => P.assertEditUnchanged({ ...s, races: [{ ...r, format: 'SOLO' }] }, snapshot), /formulaire ont changé/);
+});
+test('edit snapshots permit changes to an unrelated participant', () => {
+  const r = P.validateRace(race()), a = P.validateEntry(entry({ raceId: r.id }));
+  const b = P.validateEntry({ ...a, id: 'b', name1: 'Autre participant' });
+  const s = { ...session([a,b]), races: [r] }, snapshot = P.captureEdit(s, 'entry', a.id, r.id);
+  const changed = structuredClone(s); changed.entries[1].name1 = 'Nom corrigé';
+  assert.doesNotThrow(() => P.assertEditUnchanged(changed, snapshot));
+});
+test('event edits detect newly registered athletes and new registrations detect a removed event', () => {
+  const r = P.validateRace(race()), s = { ...session([]), races: [r] };
+  const edit = P.captureEdit(s, 'race', r.id), registration = P.captureEdit(s, 'entry', '', r.id);
+  assert.throws(() => P.assertEditUnchanged({ ...s, entries: [P.validateEntry(entry({ raceId: r.id }))] }, edit), /formulaire ont changé/);
+  assert.throws(() => P.assertEditUnchanged({ ...s, races: [] }, registration), /formulaire ont changé/);
+});
+test('arrival correction returns to the departure day instead of retaining a hidden next day', () => {
+  const r = P.validateRace(race()), e = P.validateEntry(entry({ raceId: r.id, scheduled: '23:30' }));
+  const finished = P.validateEntry({ ...e, ...P.calculateDuration(r,e,'01:00:00'), status:'finished', resultMode:'duration' });
+  const corrected = P.calculateResultArrival(r,finished,'23:45');
+  assert.equal(corrected.durationMs,15*60000);
+  assert.equal(P.localDate(new Date(corrected.arrivedAt)),r.date);
+  assert.equal(P.calculateResultArrival(r,finished,'00:15').durationMs,45*60000);
+  assert.equal(P.calculateResultArrival(r,finished,'00:30').arrivedAt,finished.arrivedAt);
+});
+test('arrival correction preserves long results and guides new overnight arrivals toward duration', () => {
+  const r = P.validateRace(race()), e = P.validateEntry(entry({ raceId:r.id }));
+  const long = P.validateEntry({ ...e,...P.calculateDuration(r,e,'25:00:00'),status:'finished' });
+  assert.equal(P.calculateResultArrival(r,long,'10:00').arrivedAt,long.arrivedAt);
+  assert.throws(() => P.calculateResultArrival(r,long,'10:15'),/supérieur à 24 heures/);
+  assert.throws(() => P.calculateResultArrival(r,e,'08:30'),/après minuit/);
+  const capture = P.arrivalNow(r,e,new Date(`${r.date}T10:00:00`).getTime());
+  assert.equal(P.calculateResultArrival(r,e,capture.arrivalTime,capture).arrivedAt,capture.arrivedAt);
+});

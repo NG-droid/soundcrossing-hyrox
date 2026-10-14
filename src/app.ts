@@ -21,6 +21,7 @@ namespace PaceApp {
   let resultMode: Pace.ResultMode = 'arrival', capturedArrival: Pace.ArrivalCapture | null = null;
   let arrivalDraft = '';
   let durationFields: Pace.DurationFields = { hours: '', minutes: '00', seconds: '00' };
+  const editSnapshots = new WeakMap<HTMLFormElement, Pace.EditSnapshot>();
   const formatOptions: { key: Pace.RankingFormat; label: string }[] = [{ key: 'H', label: 'Solo H' }, { key: 'F', label: 'Solo F' }, { key: 'HH', label: 'Duo HH' }, { key: 'FF', label: 'Duo FF' }, { key: 'HF', label: 'Duo HF' }, { key: 'SOLO', label: 'Solo à préciser' }];
   let toastTimer: number | undefined, confirmation: (() => void) | null = null;
   let importBook: Pace.Workbook | null = null, sourceRows: unknown[][] = [], headers: string[] = [], preview: Pace.ImportRow[] = [];
@@ -60,19 +61,19 @@ namespace PaceApp {
     savedStatus(storageBlocked);
     try { selectedRaceId = localStorage.getItem(`${KEY}.event`) ?? ''; } catch { /* Le choix de vue ne bloque pas les données. */ }
   }
-  function persist(candidate: Pace.Store, allowRecovery = false): boolean {
+  function persist(candidate: Pace.Store, allowRecovery = false, expectedRaw = loadedRaw): boolean {
     try {
       if (storageBlocked && !allowRecovery) throw Error('Stockage bloqué. Restaurez une sauvegarde avant de modifier la session.');
-      if (localStorage.getItem(KEY) !== loadedRaw) {
-        const latest = localStorage.getItem(KEY);
+      const latest = localStorage.getItem(KEY);
+      if (latest !== expectedRaw && !(allowRecovery && latest === null)) {
         if (latest) { state = validateStore(JSON.parse(latest)); loadedRaw = latest; render(); }
         throw Error('La session a changé dans une autre fenêtre. Vérifiez la liste puis recommencez.');
       }
       const validated = validateStore(candidate);
-      if (loadedRaw) {
+      if (latest || allowRecovery && state.session.entries.length) {
         let old: Pace.Store;
-        try { old = validateStore(JSON.parse(loadedRaw)); }
-        catch { if (!allowRecovery) throw Error('Sauvegarde actuelle invalide.'); old = fresh(); }
+        try { old = latest ? validateStore(JSON.parse(latest)) : validateStore(clone(state)); }
+        catch { if (!allowRecovery) throw Error('Sauvegarde actuelle invalide.'); old = validateStore(clone(state)); }
         old.history = []; localStorage.setItem(BACKUP, JSON.stringify(old));
       }
       let encoded = JSON.stringify(validated);
@@ -86,14 +87,29 @@ namespace PaceApp {
       state = validated; loadedRaw = encoded; storageBlocked = false; savedStatus(); return true;
     } catch (error) { savedStatus(true); toast(error instanceof Error ? `${error.message} Aucune modification appliquée.` : 'Échec de sauvegarde. Aucune modification appliquée.', true); return false; }
   }
-  function commit(description: string, mutate: (session: Pace.Session) => void): boolean {
+  function assertDraftCurrent(form: HTMLFormElement): void {
+    const snapshot = editSnapshots.get(form);
+    if (!snapshot) throw Error('Rouvrez ce formulaire avant d’enregistrer.');
+    Pace.assertEditUnchanged(state.session, snapshot);
+  }
+  function commit(description: string, mutate: (session: Pace.Session) => void, form?: HTMLFormElement): boolean {
     try {
+      if (form) assertDraftCurrent(form);
       const candidate = clone(state); mutate(candidate.session); candidate.session = validateSession(candidate.session);
       candidate.history.push({ label: description, session: clone(state.session) }); candidate.history = candidate.history.slice(-15);
       candidate.revision = crypto.randomUUID(); candidate.savedAt = Date.now();
-      if (!persist(candidate)) return false;
+      if (!persist(candidate)) {
+        const error = form?.querySelector<HTMLElement>('.form-error');
+        if (error) error.textContent = $('toast').textContent;
+        return false;
+      }
       render(); return true;
-    } catch (error) { toast(error instanceof Error ? error.message : 'Modification impossible.', true); return false; }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Modification impossible.';
+      const fieldError = form?.querySelector<HTMLElement>('.form-error');
+      if (fieldError) fieldError.textContent = message;
+      toast(message, true); return false;
+    }
   }
   function ask(title: string, message: string, action: () => void, button = 'Confirmer'): void {
     $('confirm-title').textContent = title; $('confirm-description').textContent = message; $('confirm-action').textContent = button;
@@ -231,6 +247,7 @@ namespace PaceApp {
     const form = $<HTMLFormElement>('session-form'); form.reset(); $('session-error').textContent = '';
     const race = state.session.races.find(item => item.id === id);
     field(form, 'id').value = race?.id ?? ''; field(form, 'title').value = race?.title ?? 'Soundcrossing'; field(form, 'date').value = race?.date ?? localDate();
+    editSnapshots.set(form, Pace.captureEdit(state.session, 'race', race?.id ?? ''));
     if (race) form.querySelector<HTMLInputElement>(`[name="format"][value="${race.format}"]`)!.checked = true;
     $('race-dialog-title').textContent = race ? 'Modifier l’événement' : 'Créer un événement';
     $('save-race-button').textContent = race ? 'Enregistrer' : 'Créer l’événement';
@@ -239,6 +256,7 @@ namespace PaceApp {
   function saveRace(event: SubmitEvent): void {
     event.preventDefault(); const form = $<HTMLFormElement>('session-form');
     try {
+      assertDraftCurrent(form);
       const id = field(form, 'id').value, old = state.session.races.find(race => race.id === id);
       const format = new FormData(form).get('format');
       if (format !== 'SOLO' && format !== 'DUO' && format !== 'MIXED') throw Error('Choisissez le format de l’événement : Solo, Duo ou Solo + Duo.');
@@ -250,7 +268,7 @@ namespace PaceApp {
       const previousRaceId = selectedRaceId; selectedRaceId = race.id;
       if (commit(`${old ? 'modification' : 'création'} de l’événement ${race.title}`, session => {
         const index = session.races.findIndex(r => r.id === race.id); if (index >= 0) session.races[index] = race; else session.races.push(race);
-      })) { focusId = ''; activeFormat = 'all'; rememberEvent(); $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement enregistré.'); }
+      }, form)) { focusId = ''; activeFormat = 'all'; rememberEvent(); $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement enregistré.'); }
       else selectedRaceId = previousRaceId;
     } catch (error) { $('session-error').textContent = error instanceof Error ? error.message : 'Événement invalide.'; }
   }
@@ -259,6 +277,7 @@ namespace PaceApp {
     const form = $<HTMLFormElement>('entry-form'); form.reset(); $('entry-error').textContent = '';
     const entry = entryById(id), race = entry ? state.session.races.find(r => r.id === entry.raceId)! : currentRace()!;
     field(form, 'id').value = entry?.id ?? ''; field(form, 'raceId').value = race.id;
+    editSnapshots.set(form, Pace.captureEdit(state.session, 'entry', entry?.id ?? '', race.id));
     $('entry-title').textContent = entry ? 'Modifier l’inscription' : race.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
     $('entry-format-choice').hidden = race.format !== 'MIXED';
     $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
@@ -276,6 +295,7 @@ namespace PaceApp {
   function saveEntry(event: SubmitEvent): void {
     event.preventDefault(); const form = $<HTMLFormElement>('entry-form'), get = (name: string): string => field(form, name).value.trim();
     try {
+      assertDraftCurrent(form);
       const old = entryById(get('id')), race = state.session.races.find(r => r.id === get('raceId'));
       if (!race) throw Error('La course n’existe plus.');
       const scheduled = Pace.parseScheduled(get('scheduled')); if (!scheduled) throw Error('Renseignez l’heure de départ.');
@@ -286,7 +306,7 @@ namespace PaceApp {
       if (!selectedEntryFormat) throw Error('Choisissez Solo ou Duo.');
       const format = selectedEntryFormat; Pace.assertRaceFormat(race, format);
       const category = Pace.categoryFromGenders(format, selectedGender1, selectedGender2);
-      const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt: old?.arrivedAt ?? null, durationMs, status: old?.status ?? 'waiting' });
+      const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt: old?.arrivedAt ?? null, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
       if (state.session.entries.some(e => e.id !== entry.id && identity(e) === identity(entry))) throw Error('Ce participant ou duo est déjà inscrit à cette course.');
       if (!old && state.session.entries.length >= Pace.MAX_ENTRIES) throw Error('Limite de 3 000 départs par session.');
       Pace.plannedAt(race, entry); saveValidatedEntry(entry, !!old);
@@ -296,7 +316,7 @@ namespace PaceApp {
     const success = commit(`${editing ? 'modification' : 'ajout'} de ${label(entry)}`, session => {
       const index = session.entries.findIndex(e => e.id === entry.id);
       if (index >= 0) session.entries[index] = entry; else session.entries.push(entry);
-    });
+    }, $<HTMLFormElement>('entry-form'));
     if (success) { lastEntryFormats.set(entry.raceId, `${entry.format}_${entry.category}`); focusId = entry.id; $<HTMLDialogElement>('entry-dialog').close(); render(); toast('Participant enregistré.'); }
   }
   function undo(): void {
@@ -310,6 +330,7 @@ namespace PaceApp {
     const entry = entryById(id); if (!entry) return;
     const race = state.session.races.find(r => r.id === entry.raceId)!;
     const form = $<HTMLFormElement>('result-form'); form.reset(); field(form, 'id').value = id;
+    editSnapshots.set(form, Pace.captureEdit(state.session, 'entry', entry.id, race.id));
     capturedArrival = null;
     arrivalDraft = entry.arrivedAt === null ? '' : Pace.timeOfDay(entry.arrivedAt);
     const parts = (entry.durationMs === null ? '' : clock(entry.durationMs)).split(':');
@@ -339,15 +360,7 @@ namespace PaceApp {
   function resultFromInput(entry: Pace.Entry, race: Pace.Race): Pace.ArrivalResult {
     if (resultMode === 'duration') return Pace.calculateDuration(race, entry, Pace.durationFromFields(durationFields));
     const value = field($<HTMLFormElement>('result-form'), 'arrival').value;
-    const time = Pace.parseScheduled(value), fullTime = time.length === 5 ? `${time}:00` : time;
-    const departure = Pace.departureAt(race, entry);
-    if (entry.arrivedAt !== null && departure !== null && Pace.timeOfDay(entry.arrivedAt) === fullTime) {
-      return { startedAt: departure, arrivedAt: entry.arrivedAt, durationMs: entry.arrivedAt - departure };
-    }
-    if (entry.durationMs !== null && entry.durationMs > 24 * 3600000) throw Error('Pour ce résultat supérieur à 24 heures, utilisez la saisie du temps total.');
-    const existingNextDay = entry.arrivedAt !== null && departure !== null && localDate(new Date(entry.arrivedAt)) !== localDate(new Date(departure));
-    const nextDay = capturedArrival?.arrivalTime === fullTime ? capturedArrival.nextDay : existingNextDay;
-    try { return Pace.calculateArrival(race, entry, time, nextDay); }
+    try { return Pace.calculateResultArrival(race, entry, value, capturedArrival); }
     catch (error) {
       if (error instanceof Error && error.message.includes('après minuit')) throw Error('L’heure d’arrivée précède le départ. Vérifiez l’heure ou saisissez le temps total.');
       throw error;
@@ -377,10 +390,11 @@ namespace PaceApp {
   function saveResult(event: SubmitEvent): void {
     event.preventDefault(); const form = $<HTMLFormElement>('result-form'), id = field(form, 'id').value;
     try {
+      assertDraftCurrent(form);
       const entry = entryById(id); if (!entry) throw Error('Participant introuvable.');
       const race = state.session.races.find(r => r.id === entry.raceId)!;
       const result = resultFromInput(entry, race);
-      if (commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; Object.assign(e, result); e.status = 'finished'; e.resultMode = resultMode; })) {
+      if (commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; Object.assign(e, result); e.status = 'finished'; e.resultMode = resultMode; }, form)) {
         $<HTMLDialogElement>('result-dialog').close();
         if ((event.submitter as HTMLElement | null)?.dataset.afterSave === 'photo') openPhoto(id);
         else toast('Résultat enregistré.');
@@ -403,13 +417,16 @@ namespace PaceApp {
     $('photo-time').textContent = clock(e.durationMs!);
   }
   function recordOutcome(status: 'waiting' | 'withdrawn'): void {
-    const entry = entryById(field($<HTMLFormElement>('result-form'), 'id').value); if (!entry) return;
+    const form = $<HTMLFormElement>('result-form');
+    try { assertDraftCurrent(form); }
+    catch (error) { $('result-error').textContent = error instanceof Error ? error.message : 'Rouvrez ce formulaire.'; return; }
+    const entry = entryById(field(form, 'id').value); if (!entry) return;
     const next = Pace.setOutcome(entry, status), caption = status === 'waiting' ? 'Remettre en course' : Pace.statusLabel(next);
     const apply = (): void => {
       if (commit(`${caption} : ${label(entry)}`, session => {
         const current = session.entries.find(e => e.id === entry.id)!;
         Object.assign(current, Pace.setOutcome(current, status));
-      })) { $<HTMLDialogElement>('result-dialog').close(); toast(`${caption} enregistré. Vous pouvez annuler cette modification.`); }
+      }, form)) { $<HTMLDialogElement>('result-dialog').close(); toast(`${caption} enregistré. Vous pouvez annuler cette modification.`); }
     };
     if (entry.status === 'finished') ask(`${caption} ?`, 'Le temps et l’arrivée seront retirés du classement. L’inscription est conservée ; Annuler permet de rétablir le résultat.', apply, caption);
     else apply();
@@ -580,9 +597,10 @@ namespace PaceApp {
     try {
       if (file.size > 15 * 1024 * 1024) throw Error('Sauvegarde trop volumineuse.');
       const imported = validateStore(JSON.parse(await file.text()));
+      const expectedRaw = localStorage.getItem(KEY);
       ask('Restaurer cette session ?', `« ${imported.session.title} » contient ${imported.session.entries.length} départs. La liste actuelle sera remplacée. Une sauvegarde de la session actuelle sera téléchargée avant le remplacement.`, () => {
         exportBackup(); imported.revision = crypto.randomUUID(); imported.savedAt = Date.now();
-        if (persist(imported, true)) { focusId = ''; selectedRaceId = ''; render(); toast('Courses, horaires et résultats restaurés.'); }
+        if (persist(imported, true, expectedRaw)) { focusId = ''; selectedRaceId = ''; render(); toast('Courses, horaires et résultats restaurés.'); }
       }, 'Sauvegarder et restaurer');
     } catch (error) { toast(error instanceof Error ? error.message : 'Sauvegarde invalide.', true); }
   }
@@ -675,13 +693,13 @@ namespace PaceApp {
   $('clear-result').addEventListener('click', () => {
     const id = field($<HTMLFormElement>('result-form'), 'id').value, entry = entryById(id); if (!entry) return;
     ask('Retirer le résultat ?', 'L’heure de départ sera conservée. L’arrivée et le temps total seront retirés du classement.', () => {
-      if (commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; })) $<HTMLDialogElement>('result-dialog').close();
+      if (commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; }, $<HTMLFormElement>('result-form'))) $<HTMLDialogElement>('result-dialog').close();
     }, 'Retirer le résultat');
   });
   $('delete-entry').addEventListener('click', () => {
     const id = field($<HTMLFormElement>('entry-form'), 'id').value, e = entryById(id); if (!e) return;
     ask('Supprimer cette ligne ?', `L’inscription de ${label(e)}, ses horaires et son résultat seront supprimés. La commande Annuler permet de revenir en arrière.`, () => {
-      if (commit(`suppression de ${label(e)}`, session => { session.entries = session.entries.filter(item => item.id !== id); })) $<HTMLDialogElement>('entry-dialog').close();
+      if (commit(`suppression de ${label(e)}`, session => { session.entries = session.entries.filter(item => item.id !== id); }, $<HTMLFormElement>('entry-form'))) $<HTMLDialogElement>('entry-dialog').close();
     }, 'Supprimer');
   });
   $('session-button').addEventListener('click', () => openRace(currentRace()?.id));
@@ -707,8 +725,14 @@ namespace PaceApp {
     else if (!element && fullscreenOwned && presentationActive()) closePresentation();
   });
   window.addEventListener('storage', event => {
-    if (event.key !== KEY) return;
-    try { if (event.newValue) { state = validateStore(JSON.parse(event.newValue)); loadedRaw = event.newValue; storageBlocked = false; render(); savedStatus(); toast('Session mise à jour depuis une autre fenêtre.'); } else { storageBlocked = true; savedStatus(true); toast('Le stockage a été supprimé. Exportez votre session avant de fermer.', true); } }
+    if (event.key !== KEY && event.key !== null) return;
+    try {
+      const latest = localStorage.getItem(KEY);
+      if (latest === loadedRaw) return;
+      loadedRaw = latest;
+      if (latest) { state = validateStore(JSON.parse(latest)); storageBlocked = false; render(); savedStatus(); toast('Session mise à jour depuis une autre fenêtre.'); }
+      else { storageBlocked = true; savedStatus(true); toast('Le stockage a été supprimé. Exportez votre session avant de fermer.', true); }
+    }
     catch { storageBlocked = true; savedStatus(true); toast('La sauvegarde externe est illisible. Exportez la session actuelle.', true); }
   });
   window.addEventListener('pageshow', tick); document.addEventListener('visibilitychange', tick);

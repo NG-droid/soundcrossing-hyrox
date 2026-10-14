@@ -28,6 +28,7 @@ namespace Pace {
   export interface ArrivalCapture extends ArrivalResult { arrivalTime: string; nextDay: boolean; }
   export interface Session { title: string; date: string; races: Race[]; entries: Entry[]; }
   export interface Snapshot { label: string; session: Session; }
+  export interface EditSnapshot { kind: 'race' | 'entry'; id: string; raceId: string; value: string; }
   export interface Store { version: 4; revision: string; savedAt: number; session: Session; history: Snapshot[]; settings: Settings; }
   export type ImportField = 'bib' | 'name1' | 'name2' | 'format' | 'category' | 'scheduled' | 'duration';
   export interface ImportRow { line: number; entry: Entry | null; error: string; duplicate: boolean; }
