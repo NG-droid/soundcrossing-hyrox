@@ -1,0 +1,1 @@
+{"compilerOptions":{"target":"ES2022","module":"es2022","moduleDetection":"legacy","lib":["ES2022","DOM"],"strict":true,"noUncheckedIndexedAccess":true,"noEmitOnError":true,"outDir":"dist","rootDir":"src","skipLibCheck":true},"include":["src/**/*.ts"]}

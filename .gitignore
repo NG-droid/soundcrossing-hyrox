@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+__pycache__/
+sauvegardes/
+runtime-cache/
+aperçus/
+livraison/
+.env
+.env.*
+!.env.example
+*.log

@@ -1,0 +1,15 @@
+{
+  "name": "pace-hyrox-local",
+  "version": "4.9.1",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "check": "tsc --noEmit",
+    "pack-local": "npm run build && python3 scripts/package.py",
+    "pack-windows": "npm run build && python3 scripts/package_windows.py && python3 -m unittest discover -s tests -p \"test_windows_package.py\""
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
