@@ -414,7 +414,7 @@ var PaceApp;
         selectedGender1 = entry?.gender1 ?? '';
         selectedGender2 = entry?.gender2 ?? '';
         chooseEntryFormat(format);
-        $('scheduled-hint').textContent = entry?.arrivedAt ? 'Modifier le départ recalcule le temps total à partir de l’arrivée enregistrée.' : 'Heure de départ à la date de cette course. Les secondes peuvent être précisées.';
+        $('scheduled-hint').textContent = entry?.arrivedAt ? entry.resultMode === 'duration' ? 'Modifier le départ conserve le temps total saisi et décale l’arrivée.' : 'Modifier le départ recalcule le temps total à partir de l’arrivée enregistrée.' : 'Heure de départ à la date de cette course. Les secondes peuvent être précisées.';
         $('entry-dialog').showModal();
         field(form, 'name1').focus();
     }
@@ -432,7 +432,10 @@ var PaceApp;
             let startedAt = old?.startedAt ?? null;
             if (startedAt !== null && scheduled !== Pace.timeOfDay(startedAt) && `${scheduled}:00` !== Pace.timeOfDay(startedAt))
                 startedAt = Pace.plannedAt(race, { ...old, scheduled });
-            const durationMs = old?.arrivedAt && startedAt !== null ? old.arrivedAt - startedAt : old?.durationMs ?? null;
+            // Un temps total saisi reste fixe : l’arrivée suit le départ. Une heure d’arrivée saisie reste fixe : le temps est recalculé.
+            const keepDuration = old?.resultMode === 'duration';
+            const durationMs = old?.arrivedAt && startedAt !== null && !keepDuration ? old.arrivedAt - startedAt : old?.durationMs ?? null;
+            const arrivedAt = old?.arrivedAt && startedAt !== null && keepDuration && durationMs !== null ? startedAt + durationMs : old?.arrivedAt ?? null;
             if (durationMs !== null && durationMs <= 0)
                 throw Error('Ce départ serait après l’arrivée. Corrigez les horaires.');
             if (!selectedEntryFormat)
@@ -440,7 +443,7 @@ var PaceApp;
             const format = selectedEntryFormat;
             Pace.assertRaceFormat(race, format);
             const category = Pace.categoryFromGenders(format, selectedGender1, selectedGender2);
-            const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt: old?.arrivedAt ?? null, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
+            const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
             if (state.session.entries.some(e => e.id !== entry.id && identity(e) === identity(entry)))
                 throw Error('Ce participant ou duo est déjà inscrit à cette course.');
             if (!old && state.session.entries.length >= Pace.MAX_ENTRIES)
