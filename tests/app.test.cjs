@@ -96,3 +96,23 @@ test('editing only a participant name keeps the duration input mode and result',
   const entry=JSON.parse(h.values.get(KEY)).session.entries[0];
   assert.equal(entry.name1,'Alex corrigé');assert.equal(entry.resultMode,'duration');assert.equal(entry.durationMs,3630000);
 });
+test('changing the departure keeps an entered total time and shifts the arrival',()=>{
+  const h=appHarness(), finished=structuredClone(h.store);
+  Object.assign(finished.session.entries[0],h.P.calculateDuration(h.race,h.entry,'01:00:00'),{status:'finished',resultMode:'duration'});
+  h.configure(finished);
+  const {node}=h.form('entry-form',{id:'a',raceId:'race',name1:'Alex',name2:'',scheduled:'09:10:00'});
+  h.api.freeze(node,h.P.captureEdit(finished.session,'entry','a','race'));h.api.genders();
+  h.api.saveEntry({preventDefault(){}});
+  const entry=JSON.parse(h.values.get(KEY)).session.entries[0];
+  assert.equal(entry.durationMs,3600000);assert.equal(h.P.timeOfDay(entry.startedAt),'09:10:00');assert.equal(h.P.timeOfDay(entry.arrivedAt),'10:10:00');
+});
+test('changing the departure recalculates the time of an entered arrival',()=>{
+  const h=appHarness(), finished=structuredClone(h.store);
+  Object.assign(finished.session.entries[0],h.P.calculateArrival(h.race,h.entry,'10:00:00',false),{status:'finished',resultMode:'arrival'});
+  h.configure(finished);
+  const {node}=h.form('entry-form',{id:'a',raceId:'race',name1:'Alex',name2:'',scheduled:'09:10:00'});
+  h.api.freeze(node,h.P.captureEdit(finished.session,'entry','a','race'));h.api.genders();
+  h.api.saveEntry({preventDefault(){}});
+  const entry=JSON.parse(h.values.get(KEY)).session.entries[0];
+  assert.equal(entry.durationMs,3000000);assert.equal(h.P.timeOfDay(entry.arrivedAt),'10:00:00');
+});
