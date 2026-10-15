@@ -416,7 +416,9 @@ var PaceApp;
         chooseEntryFormat(format);
         $('scheduled-hint').textContent = entry?.arrivedAt ? entry.resultMode === 'duration' ? 'Modifier le départ conserve le temps total saisi et décale l’arrivée.' : 'Modifier le départ recalcule le temps total à partir de l’arrivée enregistrée.' : 'Heure de départ à la date de cette course. Les secondes peuvent être précisées.';
         $('entry-dialog').showModal();
-        field(form, 'name1').focus();
+        const genderChoice = form.querySelector('button[data-person="1"][data-gender="H"]');
+        const needsGender = genderChoice && genderChoice.offsetParent !== null && !form.querySelector('button[data-person="1"][aria-pressed="true"]');
+        (needsGender ? genderChoice : field(form, 'name1')).focus();
     }
     function saveEntry(event) {
         event.preventDefault();

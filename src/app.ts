@@ -290,7 +290,10 @@ namespace PaceApp {
     selectedGender1 = entry?.gender1 ?? ''; selectedGender2 = entry?.gender2 ?? '';
     chooseEntryFormat(format);
     $('scheduled-hint').textContent = entry?.arrivedAt ? entry.resultMode === 'duration' ? 'Modifier le départ conserve le temps total saisi et décale l’arrivée.' : 'Modifier le départ recalcule le temps total à partir de l’arrivée enregistrée.' : 'Heure de départ à la date de cette course. Les secondes peuvent être précisées.';
-    $<HTMLDialogElement>('entry-dialog').showModal(); field(form, 'name1').focus();
+    $<HTMLDialogElement>('entry-dialog').showModal();
+    const genderChoice = form.querySelector<HTMLButtonElement>('button[data-person="1"][data-gender="H"]');
+    const needsGender = genderChoice && genderChoice.offsetParent !== null && !form.querySelector('button[data-person="1"][aria-pressed="true"]');
+    (needsGender ? genderChoice : field(form, 'name1')).focus();
   }
   function saveEntry(event: SubmitEvent): void {
     event.preventDefault(); const form = $<HTMLFormElement>('entry-form'), get = (name: string): string => field(form, name).value.trim();
