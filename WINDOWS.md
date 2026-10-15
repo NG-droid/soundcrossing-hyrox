@@ -21,7 +21,7 @@ Double-cliquez sur le même lanceur. Si le programme est déjà ouvert, il retro
 
 À faire une seule fois sur le PC :
 1. Installez Git depuis https://git-scm.com/download/win en gardant les options par défaut.
-2. Ouvrez « Invite de commandes », puis tapez `cd %USERPROFILE%\Documents` et `git clone https://github.com/NG-droid/soundcrossing-hyrox.git Soundcrossing-GitHub`. Une fenêtre demande de vous connecter à GitHub la première fois.
+2. Ouvrez « Invite de commandes », puis tapez `cd %USERPROFILE%\Documents` et `git clone https://github.com/NG-droid/soundcrossing-hyrox.git Soundcrossing-GitHub`.
 3. Copiez le sous-dossier `runtime` du ZIP déjà extrait dans le nouveau dossier `Soundcrossing-GitHub` (sinon, installez Python depuis python.org).
 4. Lancez désormais l’application avec « Lancer Soundcrossing.bat » de ce nouveau dossier.
 
