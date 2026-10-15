@@ -2,6 +2,8 @@
 from hashlib import sha256
 from io import BytesIO
 import json
+import os
+import subprocess
 from pathlib import Path, PurePosixPath
 from urllib.request import urlopen
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -56,6 +58,8 @@ def build() -> Path:
                         "runtime_source": URL, "runtime_sha256": SHA256,
                         "release": f"https://www.python.org/downloads/release/python-{VERSION.replace('.', '')}/",
                         "validation": "Archive et serveur vérifiés sur Mac ; lancement Windows à vérifier sur un PC."}
+            version = os.environ.get("GITHUB_SHA") or subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+            archive.writestr(f"{PREFIX}VERSION", version)
             archive.writestr(f"{PREFIX}DISTRIBUTION.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
         pending.replace(output)
     except Exception:

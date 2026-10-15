@@ -6,6 +6,10 @@ from urllib.request import urlopen
 from urllib.error import URLError
 from urllib.parse import urlparse, unquote
 import hashlib
+import io
+import os
+import subprocess
+import zipfile
 import json
 import sys
 import webbrowser
@@ -42,7 +46,54 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+RELEASE = "https://github.com/NG-droid/soundcrossing-hyrox/releases/download/windows"
+VERSION_FILE = ROOT / "VERSION"
+# Fichiers remplacés par une mise à jour. Le lanceur .bat et runtime/ ne sont jamais touchés :
+# Windows relit un .bat en cours d’exécution, et Python ne change pas d’une version à l’autre.
+UPDATABLE = (
+    "index.html", "styles.css", "club.css", "server.py",
+    "assets/soundcrossing-logo.jpg", "assets/ORIGINE.md",
+    "dist/models.js", "dist/core.js", "dist/app.js",
+    "vendor/xlsx.full.min.js", "vendor/SheetJS-LICENSE.txt", "LISEZ-MOI.txt",
+)
+
+
+def update():
+    """Récupère la dernière version publiée. Sans Internet, l’application démarre telle quelle."""
+    if "--no-update" in sys.argv or os.environ.get("SOUNDCROSSING_NO_UPDATE"):
+        return
+    try:
+        if (ROOT / ".git").exists():
+            subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=ROOT, timeout=30, check=False)
+            return
+        if not VERSION_FILE.exists():
+            return
+        local = VERSION_FILE.read_text(encoding="utf-8").strip()
+        with urlopen(f"{RELEASE}/VERSION.txt", timeout=5) as response:
+            remote = response.read(100).decode().strip()
+        if not remote or remote == local:
+            return
+        print("Nouvelle version disponible, mise à jour…", flush=True)
+        with urlopen(f"{RELEASE}/Soundcrossing-Windows-x64.zip", timeout=120) as response:
+            data = response.read()
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            files = {name: archive.read(f"Soundcrossing/{name}") for name in UPDATABLE if f"Soundcrossing/{name}" in archive.namelist()}
+        if "dist/app.js" not in files:
+            return
+        for name, content in files.items():
+            target = ROOT / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            pending = target.with_name(target.name + ".maj")
+            pending.write_bytes(content)
+            pending.replace(target)
+        VERSION_FILE.write_text(remote, encoding="utf-8")
+        print("Soundcrossing est à jour.", flush=True)
+    except Exception:  # Une mise à jour ratée ne doit jamais empêcher la course.
+        print("Mise à jour impossible pour le moment ; la version actuelle démarre.", flush=True)
+
+
 def main():
+    update()
     try:
         server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:
