@@ -2,7 +2,7 @@
 """Local-only launcher. Keep the origin stable so browser storage is reused."""
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from urllib.error import URLError
 from urllib.parse import urlparse, unquote
 import hashlib
@@ -12,6 +12,7 @@ import subprocess
 import zipfile
 import json
 import sys
+import time
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent
@@ -69,12 +70,15 @@ def update():
         if not VERSION_FILE.exists():
             return
         local = VERSION_FILE.read_text(encoding="utf-8").strip()
-        with urlopen(f"{RELEASE}/VERSION.txt", timeout=5) as response:
+        fresh = int(time.time())  # évite une ancienne copie gardée en cache
+        request = Request(f"{RELEASE}/VERSION.txt?t={fresh}", headers={"Cache-Control": "no-cache"})
+        with urlopen(request, timeout=5) as response:
             remote = response.read(100).decode().strip()
         if not remote or remote == local:
+            print("Soundcrossing est déjà à jour.", flush=True)
             return
         print("Nouvelle version disponible, mise à jour…", flush=True)
-        with urlopen(f"{RELEASE}/Soundcrossing-Windows-x64.zip", timeout=120) as response:
+        with urlopen(Request(f"{RELEASE}/Soundcrossing-Windows-x64.zip?t={fresh}", headers={"Cache-Control": "no-cache"}), timeout=120) as response:
             data = response.read()
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             files = {name: archive.read(f"Soundcrossing/{name}") for name in UPDATABLE if f"Soundcrossing/{name}" in archive.namelist()}
