@@ -2,7 +2,7 @@
 
 ## Première utilisation — Windows 10/11, PC Intel ou AMD 64 bits
 
-1. Copiez `Soundcrossing-Windows-x64.zip` sur le PC de la salle.
+1. Téléchargez `Soundcrossing-Windows-x64.zip` depuis https://github.com/NG-droid/soundcrossing-hyrox/releases/tag/windows (ou copiez-le sur le PC de la salle).
 2. Clic droit sur le ZIP → « Extraire tout ». Choisissez par exemple Documents.
 3. Ouvrez le dossier Soundcrossing extrait.
 4. Double-cliquez sur « Lancer Soundcrossing.bat ».
@@ -17,15 +17,11 @@ Ne lancez pas le programme directement depuis l’archive ZIP. Gardez tout le do
 
 Double-cliquez sur le même lanceur. Si le programme est déjà ouvert, il retrouve le serveur actif et ouvre l’application. Si le navigateur ne s’ouvre pas, entrez http://127.0.0.1:8767/ dans sa barre d’adresse.
 
-## Mettre à jour depuis GitHub, sans retélécharger le ZIP
+## Mises à jour automatiques
 
-À faire une seule fois sur le PC :
-1. Installez Git depuis https://git-scm.com/download/win en gardant les options par défaut.
-2. Ouvrez « Invite de commandes », puis tapez `cd %USERPROFILE%\Documents` et `git clone https://github.com/NG-droid/soundcrossing-hyrox.git Soundcrossing-GitHub`.
-3. Copiez le sous-dossier `runtime` du ZIP déjà extrait dans le nouveau dossier `Soundcrossing-GitHub` (sinon, installez Python depuis python.org).
-4. Lancez désormais l’application avec « Lancer Soundcrossing.bat » de ce nouveau dossier.
+Rien à faire : à chaque lancement, si Internet est disponible, Soundcrossing vérifie s’il existe une nouvelle version et l’installe avant d’ouvrir l’application. Sans Internet, la version actuelle démarre normalement. Les inscriptions et résultats sont conservés, car ils restent dans le navigateur.
 
-Ensuite, à chaque nouvelle version publiée sur GitHub : double-cliquez sur « Mettre a jour Soundcrossing.bat », puis rechargez la page du navigateur. Les inscriptions et résultats sont conservés, car ils restent dans le navigateur à l’adresse http://127.0.0.1:8767/.
+La dernière version se télécharge toujours ici : https://github.com/NG-droid/soundcrossing-hyrox/releases/tag/windows
 
 ## Retrouver vos participants et résultats
 

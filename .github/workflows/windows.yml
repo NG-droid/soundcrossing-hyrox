@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run pack-windows
+      - run: echo "$GITHUB_SHA" > livraison/VERSION.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Soundcrossing-Windows-x64
@@ -33,6 +34,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete windows --yes --cleanup-tag || true
-          gh release create windows livraison/Soundcrossing-Windows-x64.zip \
+          gh release create windows livraison/Soundcrossing-Windows-x64.zip livraison/VERSION.txt \
             --title "Soundcrossing pour Windows" \
-            --notes "Dernière version, mise à jour automatiquement. Téléchargez Soundcrossing-Windows-x64.zip, faites clic droit → Extraire tout, puis double-cliquez sur « Lancer Soundcrossing.bat ». Rien à installer, Internet inutile."
+            --notes "Dernière version, mise à jour automatiquement. Téléchargez Soundcrossing-Windows-x64.zip, faites clic droit → Extraire tout, puis double-cliquez sur « Lancer Soundcrossing.bat ». Rien à installer. Les versions suivantes s’installent toutes seules au lancement quand Internet est disponible."
