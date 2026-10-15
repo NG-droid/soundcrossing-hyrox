@@ -128,3 +128,4 @@
 .ico{width:1.25em;height:1.25em;flex:none;vertical-align:-.25em}.row-action{display:inline-flex;align-items:center;justify-content:center;gap:5px}.row-action .ico{width:15px;height:15px}.search .ico{width:16px;height:16px;color:#777}
 .day-overview,.list-panel{box-shadow:0 1px 3px #0000000f}.race-table td{border-bottom-color:var(--line)}
 [data-gender]:focus{outline:2px solid #d8242d;outline-offset:2px}
+.settings-modal select{display:block;width:100%;margin-top:8px;min-height:44px;padding:10px 12px;border:1px solid #b9b9b3;border-radius:7px;background:#fff;color:#171717;font-weight:600}.settings-modal label[for]{font-weight:600}.danger-zone h3{color:#b01c24}.reset-warning{background:#fff3f3;border:1px solid #f1c4c6;color:#7a1218;border-radius:8px;padding:14px 16px;line-height:1.5}.reset-actions{display:flex;flex-direction:column;gap:10px;margin-top:18px}.reset-actions .button{width:100%}

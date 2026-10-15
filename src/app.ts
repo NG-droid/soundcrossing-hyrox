@@ -182,7 +182,7 @@ namespace PaceApp {
     $<HTMLButtonElement>('template-button').disabled = !race;
     $<HTMLButtonElement>('excel-help-button').disabled = !race;
     $('settings-event-context').textContent = race ? `${race.title} · ${raceLabel(race)} · ${eventFormatLabel(race)}` : 'Créez un événement pour préparer ou exporter ses fichiers.';
-    $('export-button').textContent = view === 'results' ? 'Classement Excel' : 'Liste Excel';
+    $('export-button').textContent = view === 'results' ? 'Exporter le classement (Excel)' : 'Exporter la liste (Excel)';
     $('settings-export-hint').textContent = !race ? '' : `${view === 'results' ? 'Excel : classement de la catégorie affichée, ou de toutes les catégories si aucun filtre n’est actif.' : 'Excel : toutes les inscriptions de la journée, avec leurs horaires et résultats.'} ${finalResults ? 'CSV final : tous les formats de la journée, forfaits inclus.' : 'CSV final disponible lorsque toutes les inscriptions ont un résultat ou un forfait.'}`;
     $('empty-title').textContent = race ? 'La liste de départ est prête à remplir.' : 'Préparez votre événement Soundcrossing.';
     $('empty-description').textContent = race ? race.format === 'DUO' ? 'Ajoutez les duos HH/FF/HF et leurs heures de départ.' : race.format === 'SOLO' ? 'Ajoutez les solos H/F et leurs heures de départ.' : 'Ajoutez des solos H/F ou des duos HH/FF/HF, puis leurs heures de départ.' : 'Donnez un nom, une date et un format à l’événement.';
@@ -659,12 +659,13 @@ namespace PaceApp {
     candidate.savedAt = Date.now(); candidate.revision = crypto.randomUUID(); if (persist(candidate)) render(); else render();
   });
   $('preview-photo').addEventListener('click', () => { const entry = raceEntries().find(e => e.status === 'finished'); if (entry) { $<HTMLDialogElement>('settings-dialog').close(); openPhoto(entry.id); } else toast('Enregistrez une arrivée pour voir la photo finish.'); });
-  $('new-session-button').addEventListener('click', () => {
-    ask('Commencer une nouvelle session ?', 'Une sauvegarde sera téléchargée avant de vider les événements. Vérifiez le téléchargement. Vous pourrez aussi annuler cette modification.', () => {
-      exportBackup();
-      if (commit('création d’une nouvelle session', session => { session.title = 'Soundcrossing'; session.date = localDate(); session.races = []; session.entries = []; })) { focusId = ''; selectedRaceId = ''; view = 'participants'; activeFormat = 'all'; render(); }
-    }, 'Sauvegarder et commencer');
-  });
+  const resetAll = () => {
+    $<HTMLDialogElement>('reset-dialog').close();
+    if (commit('remise à zéro', session => { session.title = 'Soundcrossing'; session.date = localDate(); session.races = []; session.entries = []; })) { focusId = ''; selectedRaceId = ''; view = 'participants'; activeFormat = 'all'; render(); toast('Tout est effacé. « Annuler » permet encore de revenir en arrière.'); }
+  };
+  $('new-session-button').addEventListener('click', () => { $<HTMLDialogElement>('settings-dialog').close(); $<HTMLDialogElement>('reset-dialog').showModal(); $('reset-save').focus(); });
+  $('reset-save').addEventListener('click', () => { exportBackup(); resetAll(); });
+  $('reset-now').addEventListener('click', resetAll);
   $('demo-button').addEventListener('click', demo); $('undo-button').addEventListener('click', undo);
   $('search').addEventListener('input', render); $('sort').addEventListener('change', render);
   $('entry-form').addEventListener('submit', event => saveEntry(event as SubmitEvent));
