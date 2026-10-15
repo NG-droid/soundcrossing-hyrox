@@ -17,6 +17,16 @@ Ne lancez pas le programme directement depuis l’archive ZIP. Gardez tout le do
 
 Double-cliquez sur le même lanceur. Si le programme est déjà ouvert, il retrouve le serveur actif et ouvre l’application. Si le navigateur ne s’ouvre pas, entrez http://127.0.0.1:8767/ dans sa barre d’adresse.
 
+## Mettre à jour depuis GitHub, sans retélécharger le ZIP
+
+À faire une seule fois sur le PC :
+1. Installez Git depuis https://git-scm.com/download/win en gardant les options par défaut.
+2. Ouvrez « Invite de commandes », puis tapez `cd %USERPROFILE%\Documents` et `git clone https://github.com/NG-droid/soundcrossing-hyrox.git Soundcrossing-GitHub`. Une fenêtre demande de vous connecter à GitHub la première fois.
+3. Copiez le sous-dossier `runtime` du ZIP déjà extrait dans le nouveau dossier `Soundcrossing-GitHub` (sinon, installez Python depuis python.org).
+4. Lancez désormais l’application avec « Lancer Soundcrossing.bat » de ce nouveau dossier.
+
+Ensuite, à chaque nouvelle version publiée sur GitHub : double-cliquez sur « Mettre a jour Soundcrossing.bat », puis rechargez la page du navigateur. Les inscriptions et résultats sont conservés, car ils restent dans le navigateur à l’adresse http://127.0.0.1:8767/.
+
 ## Retrouver vos participants et résultats
 
 Les données sont enregistrées dans le navigateur de ce PC, pour l’adresse http://127.0.0.1:8767/. Utilisez le même navigateur et son même profil. Évitez la navigation privée.
