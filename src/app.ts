@@ -158,7 +158,8 @@ namespace PaceApp {
   }
   function raceLabel(race: Pace.Race): string { return new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR'); }
   function eventFormatLabel(race: Pace.Race): string { return race.format === 'MIXED' ? 'Solo + Duo' : race.format === 'DUO' ? 'Duo' : 'Solo'; }
-  function departureText(entry: Pace.Entry): string { return entry.startedAt === null ? entry.scheduled || '—' : Pace.timeOfDay(entry.startedAt); }
+  // Départ affiché en hh:mm ; les secondes ne servent qu’au résultat.
+  function departureText(entry: Pace.Entry): string { return entry.startedAt === null ? entry.scheduled.slice(0, 5) || '—' : Pace.timeOfDay(entry.startedAt).slice(0, 5); }
   function resultRanking(): { entry: Pace.Entry; rank: number }[] {
     const visible = Pace.eventRankingFormats(currentRace(), raceEntries());
     return formatOptions.filter(option => visible.includes(option.key)).filter(option => activeFormat === 'all' || option.key === activeFormat).flatMap(option => Pace.rankingFor(state.session, option.key, currentRace()?.date ?? state.session.date));
@@ -317,8 +318,8 @@ namespace PaceApp {
     $('entry-format-choice').hidden = race.format !== 'MIXED';
     $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
     $<HTMLButtonElement>('delete-entry').hidden = !entry;
-    for (const name of ['name1', 'name2', 'scheduled'] as const) if (entry) field(form, name).value = entry[name];
-    if (entry?.startedAt !== null && entry?.startedAt !== undefined) field(form, 'scheduled').value = Pace.timeOfDay(entry.startedAt);
+    for (const name of ['name1', 'name2'] as const) if (entry) field(form, name).value = entry[name];
+    if (entry) field(form, 'scheduled').value = (entry.startedAt === null ? entry.scheduled : Pace.timeOfDay(entry.startedAt)).slice(0, 5);
     const lastKind = lastEntryFormats.get(race.id) ?? '';
     const lastFormat = lastKind.startsWith('DUO_') ? 'DUO' : lastKind.startsWith('SOLO_') ? 'SOLO' : '';
     const format = entry?.format ?? (race.format === 'MIXED' ? lastFormat : race.format);
@@ -338,7 +339,7 @@ namespace PaceApp {
       if (!race) throw Error('La course n’existe plus.');
       const scheduled = Pace.parseScheduled(get('scheduled')); if (!scheduled) throw Error('Renseignez l’heure de départ.');
       let startedAt = old?.startedAt ?? null;
-      if (startedAt !== null && scheduled !== Pace.timeOfDay(startedAt) && `${scheduled}:00` !== Pace.timeOfDay(startedAt)) startedAt = Pace.plannedAt(race, { ...old!, scheduled });
+      if (startedAt !== null && scheduled.slice(0, 5) !== Pace.timeOfDay(startedAt).slice(0, 5)) startedAt = Pace.plannedAt(race, { ...old!, scheduled });
       // Un temps total saisi reste fixe : l’arrivée suit le départ. Une heure d’arrivée saisie reste fixe : le temps est recalculé.
       const keepDuration = old?.resultMode === 'duration';
       const durationMs = old?.arrivedAt && startedAt !== null && !keepDuration ? old.arrivedAt - startedAt : old?.durationMs ?? null;

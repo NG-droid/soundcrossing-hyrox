@@ -244,7 +244,8 @@ var PaceApp;
     }
     function raceLabel(race) { return new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR'); }
     function eventFormatLabel(race) { return race.format === 'MIXED' ? 'Solo + Duo' : race.format === 'DUO' ? 'Duo' : 'Solo'; }
-    function departureText(entry) { return entry.startedAt === null ? entry.scheduled || '—' : Pace.timeOfDay(entry.startedAt); }
+    // Départ affiché en hh:mm ; les secondes ne servent qu’au résultat.
+    function departureText(entry) { return entry.startedAt === null ? entry.scheduled.slice(0, 5) || '—' : Pace.timeOfDay(entry.startedAt).slice(0, 5); }
     function resultRanking() {
         const visible = Pace.eventRankingFormats(currentRace(), raceEntries());
         return formatOptions.filter(option => visible.includes(option.key)).filter(option => activeFormat === 'all' || option.key === activeFormat).flatMap(option => Pace.rankingFor(state.session, option.key, currentRace()?.date ?? state.session.date));
@@ -459,11 +460,11 @@ var PaceApp;
         $('entry-format-choice').hidden = race.format !== 'MIXED';
         $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
         $('delete-entry').hidden = !entry;
-        for (const name of ['name1', 'name2', 'scheduled'])
+        for (const name of ['name1', 'name2'])
             if (entry)
                 field(form, name).value = entry[name];
-        if (entry?.startedAt !== null && entry?.startedAt !== undefined)
-            field(form, 'scheduled').value = Pace.timeOfDay(entry.startedAt);
+        if (entry)
+            field(form, 'scheduled').value = (entry.startedAt === null ? entry.scheduled : Pace.timeOfDay(entry.startedAt)).slice(0, 5);
         const lastKind = lastEntryFormats.get(race.id) ?? '';
         const lastFormat = lastKind.startsWith('DUO_') ? 'DUO' : lastKind.startsWith('SOLO_') ? 'SOLO' : '';
         const format = entry?.format ?? (race.format === 'MIXED' ? lastFormat : race.format);
@@ -488,7 +489,7 @@ var PaceApp;
             if (!scheduled)
                 throw Error('Renseignez l’heure de départ.');
             let startedAt = old?.startedAt ?? null;
-            if (startedAt !== null && scheduled !== Pace.timeOfDay(startedAt) && `${scheduled}:00` !== Pace.timeOfDay(startedAt))
+            if (startedAt !== null && scheduled.slice(0, 5) !== Pace.timeOfDay(startedAt).slice(0, 5))
                 startedAt = Pace.plannedAt(race, { ...old, scheduled });
             // Un temps total saisi reste fixe : l’arrivée suit le départ. Une heure d’arrivée saisie reste fixe : le temps est recalculé.
             const keepDuration = old?.resultMode === 'duration';
