@@ -61,7 +61,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if path not in {"/", "/index.html", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"}:
+        if path not in {"/", "/index.html", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/assets/soundcrossing-logo.png", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"}:
             self.send_error(404)
             return
         super().do_GET()
@@ -113,7 +113,7 @@ VERSION_FILE = ROOT / "VERSION"
 # Windows relit un .bat en cours d’exécution, et Python ne change pas d’une version à l’autre.
 UPDATABLE = (
     "index.html", "styles.css", "club.css", "server.py",
-    "assets/soundcrossing-logo.jpg", "assets/ORIGINE.md",
+    "assets/soundcrossing-logo.jpg", "assets/soundcrossing-logo.png", "assets/ORIGINE.md",
     "dist/models.js", "dist/core.js", "dist/app.js",
     "vendor/xlsx.full.min.js", "vendor/SheetJS-LICENSE.txt", "LISEZ-MOI.txt",
 )
@@ -134,7 +134,9 @@ def update():
         request = Request(f"{RELEASE}/VERSION.txt?t={fresh}", headers={"Cache-Control": "no-cache"})
         with urlopen(request, timeout=5) as response:
             remote = response.read(100).decode().strip()
-        if not remote or remote == local:
+        # Un fichier ajouté par une version récente peut manquer si l’ancienne mise à jour ne le connaissait pas.
+        missing = any(not (ROOT / name).exists() for name in UPDATABLE)
+        if not remote or (remote == local and not missing):
             print("Soundcrossing est déjà à jour.", flush=True)
             return
         print("Nouvelle version disponible, mise à jour…", flush=True)
