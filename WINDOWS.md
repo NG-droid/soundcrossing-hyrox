@@ -19,13 +19,13 @@ Double-cliquez sur le même lanceur. Si le programme est déjà ouvert, il retro
 
 ## Mises à jour automatiques
 
-Rien à faire : à chaque lancement, si Internet est disponible, Soundcrossing vérifie s’il existe une nouvelle version et l’installe avant d’ouvrir l’application. Sans Internet, la version actuelle démarre normalement. Les inscriptions et résultats sont conservés, car ils restent dans le navigateur.
+Rien à faire : à chaque lancement, si Internet est disponible, Soundcrossing vérifie s’il existe une nouvelle version et l’installe avant d’ouvrir l’application. Sans Internet, la version actuelle démarre normalement. Les inscriptions et résultats sont conservés : la mise à jour ne touche pas au dossier des données.
 
 La dernière version se télécharge toujours ici : https://github.com/NG-droid/soundcrossing-hyrox/releases/tag/windows
 
 ## Retrouver vos participants et résultats
 
-Les données sont enregistrées dans le navigateur de ce PC, pour l’adresse http://127.0.0.1:8767/. Utilisez le même navigateur et son même profil. Évitez la navigation privée.
+Chaque modification est enregistrée dans le navigateur et, en double, dans le fichier Documents\Soundcrossing\session.json de ce PC (la version précédente est gardée dans session-precedente.json). Si le navigateur a effacé ses données, la session est rechargée depuis ce fichier au lancement suivant. La fenêtre noire de Soundcrossing doit rester ouverte pendant la session : c’est elle qui écrit le fichier.
 
 Pour transférer votre liste depuis le Mac :
 1. Dans l’application du Mac, Paramètres → Sauvegarder un fichier.

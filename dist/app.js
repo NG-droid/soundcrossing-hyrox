@@ -86,6 +86,61 @@ var PaceApp;
         }
         catch { /* Le choix de vue ne bloque pas les données. */ }
     }
+    // Copie de la session sur le disque via server.py : elle survit à un navigateur qui efface ses données à la fermeture.
+    let diskPending = null, diskBusy = false, diskWarned = false;
+    function saveToDisk(raw) {
+        if (typeof fetch !== 'function' || location.protocol === 'file:')
+            return;
+        diskPending = raw;
+        if (diskBusy)
+            return;
+        diskBusy = true;
+        void (async () => {
+            while (diskPending !== null) {
+                const body = diskPending;
+                diskPending = null;
+                try {
+                    const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+                    if (!response.ok)
+                        throw Error();
+                    diskWarned = false;
+                }
+                catch {
+                    if (!diskWarned) {
+                        diskWarned = true;
+                        toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et exportez une sauvegarde.', true);
+                    }
+                }
+            }
+            diskBusy = false;
+        })();
+    }
+    async function syncDisk() {
+        if (typeof fetch !== 'function' || location.protocol === 'file:')
+            return;
+        let disk = null;
+        try {
+            const response = await fetch('/data', { cache: 'no-store' });
+            if (response.ok)
+                disk = validateStore(await response.json());
+        }
+        catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
+        if (disk && (loadedRaw === null || storageBlocked || disk.savedAt > state.savedAt)) {
+            const encoded = JSON.stringify(disk);
+            try {
+                localStorage.setItem(KEY, encoded);
+                loadedRaw = encoded;
+                storageBlocked = false;
+            }
+            catch { /* La session reste utilisable à l’écran. */ }
+            state = disk;
+            render();
+            savedStatus(storageBlocked);
+            toast('Données rechargées depuis la copie sur le disque.');
+        }
+        else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt))
+            saveToDisk(loadedRaw);
+    }
     function persist(candidate, allowRecovery = false, expectedRaw = loadedRaw) {
         try {
             if (storageBlocked && !allowRecovery)
@@ -130,6 +185,7 @@ var PaceApp;
             loadedRaw = encoded;
             storageBlocked = false;
             savedStatus();
+            saveToDisk(encoded);
             return true;
         }
         catch (error) {
@@ -1138,5 +1194,6 @@ var PaceApp;
     document.addEventListener('visibilitychange', tick);
     load();
     render();
+    void syncDisk();
     window.setInterval(tick, 1000);
 })(PaceApp || (PaceApp = {}));

@@ -61,6 +61,41 @@ namespace PaceApp {
     savedStatus(storageBlocked);
     try { selectedRaceId = localStorage.getItem(`${KEY}.event`) ?? ''; } catch { /* Le choix de vue ne bloque pas les données. */ }
   }
+  // Copie de la session sur le disque via server.py : elle survit à un navigateur qui efface ses données à la fermeture.
+  let diskPending: string | null = null, diskBusy = false, diskWarned = false;
+  function saveToDisk(raw: string): void {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+    diskPending = raw;
+    if (diskBusy) return;
+    diskBusy = true;
+    void (async () => {
+      while (diskPending !== null) {
+        const body = diskPending; diskPending = null;
+        try {
+          const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+          if (!response.ok) throw Error();
+          diskWarned = false;
+        } catch {
+          if (!diskWarned) { diskWarned = true; toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et exportez une sauvegarde.', true); }
+        }
+      }
+      diskBusy = false;
+    })();
+  }
+  async function syncDisk(): Promise<void> {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+    let disk: Pace.Store | null = null;
+    try {
+      const response = await fetch('/data', { cache: 'no-store' });
+      if (response.ok) disk = validateStore(await response.json());
+    } catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
+    if (disk && (loadedRaw === null || storageBlocked || disk.savedAt > state.savedAt)) {
+      const encoded = JSON.stringify(disk);
+      try { localStorage.setItem(KEY, encoded); loadedRaw = encoded; storageBlocked = false; } catch { /* La session reste utilisable à l’écran. */ }
+      state = disk; render(); savedStatus(storageBlocked);
+      toast('Données rechargées depuis la copie sur le disque.');
+    } else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt)) saveToDisk(loadedRaw);
+  }
   function persist(candidate: Pace.Store, allowRecovery = false, expectedRaw = loadedRaw): boolean {
     try {
       if (storageBlocked && !allowRecovery) throw Error('Stockage bloqué. Restaurez une sauvegarde avant de modifier la session.');
@@ -84,7 +119,7 @@ namespace PaceApp {
           validated.history.shift(); encoded = JSON.stringify(validated);
         }
       }
-      state = validated; loadedRaw = encoded; storageBlocked = false; savedStatus(); return true;
+      state = validated; loadedRaw = encoded; storageBlocked = false; savedStatus(); saveToDisk(encoded); return true;
     } catch (error) { savedStatus(true); toast(error instanceof Error ? `${error.message} Aucune modification appliquée.` : 'Échec de sauvegarde. Aucune modification appliquée.', true); return false; }
   }
   function assertDraftCurrent(form: HTMLFormElement): void {
@@ -743,5 +778,5 @@ namespace PaceApp {
     catch { storageBlocked = true; savedStatus(true); toast('La sauvegarde externe est illisible. Exportez la session actuelle.', true); }
   });
   window.addEventListener('pageshow', tick); document.addEventListener('visibilitychange', tick);
-  load(); render(); window.setInterval(tick, 1000);
+  load(); render(); void syncDisk(); window.setInterval(tick, 1000);
 }

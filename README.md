@@ -14,7 +14,7 @@ Le dépôt conserve le code et son historique. Les sauvegardes des participants,
 - Liste triée par départ, filtres de format en un clic, arrivées à compléter, ajout près du tableau. Classement séparé par format et par date, avec ex æquo (1, 2, 2, 4).
 - Départ + arrivée = temps total ; pas de chrono en direct. Correction, retrait du résultat et annulation (15 étapes) disponibles.
 - Trois modèles photo sans commandes visibles, logo Soundcrossing, deux noms de duo au même niveau. Échap ou coin supérieur gauche pour quitter.
-- Sauvegarde/restauration et préférences photo regroupées dans Paramètres. Données dans le navigateur à `http://127.0.0.1:8767/`, pas dans le dossier de l’application. Garder le même navigateur/profil/adresse. Une sauvegarde JSON est nécessaire pour changer d’ordinateur.
+- Sauvegarde/restauration et préférences photo regroupées dans Paramètres. Données dans le navigateur à `http://127.0.0.1:8767/`, copiées à chaque modification par `server.py` dans `~/Documents/Soundcrossing/session.json` (ou `SOUNDCROSSING_DATA`) et rechargées au démarrage si le navigateur les a perdues ou si la copie disque est plus récente. Une sauvegarde JSON est nécessaire pour changer d’ordinateur.
 - Imports Excel/CSV avec format par ligne, prévisualisation, validation intégrale, contrôle de doublons (mêmes noms, même format, même événement, même heure). Modèle Excel, consignes et exports regroupés dans Paramètres. Import et annulation restent près du tableau.
 - Création d’événement : format obligatoire sans présélection. Format affiché sous le titre, dans le sélecteur et à l’inscription. Paramètres → « Format du fichier » présente les colonnes et exemples Excel compatibles avec l’événement sélectionné.
 - Forfait : inscription conservée, sans arrivée, temps ou rang ; remise en course et annulation possibles. Statuts persistés dans la sauvegarde et inclus dans l’export Excel de la liste.
@@ -36,7 +36,7 @@ Clé de stockage conservée : `pace.hyrox.session.v1` ; copie de récupération 
 
 Dates/heures dans le fuseau local de l’ordinateur. Arrivée après minuit explicite, durée positive et au plus 48 h ; heures inexistantes lors du changement d’heure refusées. Une date comportant des départs enregistrés ne peut pas être déplacée : créer un autre événement.
 
-Le serveur n’écoute que sur `127.0.0.1` et sert une liste explicite de ressources publiques ; les sauvegardes, sources et dossiers internes ne sont pas accessibles par HTTP. Les données ne sont pas envoyées à un service distant. Logo : [origine](assets/ORIGINE.md).
+Le serveur n’écoute que sur `127.0.0.1` et sert une liste explicite de ressources publiques ; les sauvegardes, sources et dossiers internes ne sont pas accessibles par HTTP. `/data` lit et écrit uniquement la copie disque de la session ; l’écriture exige l’hôte `127.0.0.1:8767`, l’origine de l’application et un corps JSON. Les données ne sont pas envoyées à un service distant. Logo : [origine](assets/ORIGINE.md).
 
 ## Développement / reprise
 
