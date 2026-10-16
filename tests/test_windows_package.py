@@ -75,7 +75,7 @@ class WindowsDistributionTests(unittest.TestCase):
         with extracted_server() as (base, module):
             with urlopen(f"{base}/health", timeout=5) as response:
                 self.assertEqual(json.load(response)["identity"], module.IDENTITY)
-            for path in ["/", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"]:
+            for path in ["/", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/assets/soundcrossing-logo.png", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"]:
                 with urlopen(f"{base}{path}", timeout=5) as response:
                     self.assertEqual(response.status, 200)
                     self.assertTrue(response.read(), path)
