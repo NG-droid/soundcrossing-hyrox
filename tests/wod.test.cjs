@@ -109,3 +109,27 @@ test('WOD : Scaled puis RX ; un ancien événement Pro / Open ou RX / Scaled est
   assert.equal(W.remapLevel('Scaled', []), undefined);
 });
 
+
+test('a damaged backup is refused before replacing anything', () => {
+  const base = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a')], workouts: [], scores: {} };
+  assert.equal(W.validateStore({ version: 2, events: [base], selectedId: 'c' }).events[0].athletes.length, 1);
+  const broken = [
+    { ...base, athletes: [{ id: 'a', format: 'SOLO', name1: '', gender1: 'H' }] },
+    { ...base, athletes: [{ id: 'a', format: 'DUO', name1: 'A', name2: '', gender1: 'H', gender2: '' }] },
+    { ...base, athletes: [athlete('a'), athlete('a')] },
+    { ...base, athletes: [null] },
+    { ...base, workouts: [{ id: 'w', name: 'W', type: 'inconnu' }] },
+    { ...base, workouts: [{ id: 'w', name: 'W', type: 'time' }], scores: { w: { a: { timeMs: -5 } } } },
+  ];
+  for (const event of broken) assert.throws(() => W.validateStore({ version: 2, events: [event], selectedId: 'c' }));
+  assert.throws(() => W.validateStore({ version: 2, events: [base, base], selectedId: 'c' }));
+});
+
+test('scores of removed athletes or WOD are dropped, and save metadata is kept', () => {
+  const w = { id: 'w', name: 'W', description: '', type: 'reps', capMinutes: null, totalReps: null, repsPerRound: null };
+  const event = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a')], workouts: [w], scores: { w: { a: { reps: 3 }, ghost: { reps: 9 } }, old: { a: { reps: 1 } } } };
+  const store = W.validateStore({ version: 2, events: [event], selectedId: 'c', revision: 'r1', savedAt: 42 });
+  assert.deepEqual(JSON.parse(JSON.stringify(store.events[0].scores)), { w: { a: { reps: 3 } } });
+  assert.equal(store.savedAt, 42); assert.equal(store.revision, 'r1');
+  assert.equal(W.validateStore(W.demo('2026-10-18')).events[0].athletes.length, 10);
+});

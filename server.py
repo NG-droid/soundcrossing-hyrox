@@ -13,11 +13,13 @@ import subprocess
 import zipfile
 import json
 import sys
+import tempfile
+import threading
 import time
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent
-PORT = 8767
+PORT = int(os.environ.get("SOUNDCROSSING_PORT", "8767"))  # autre port : uniquement pour les tests
 URL = f"http://127.0.0.1:{PORT}"
 IDENTITY = hashlib.sha256(str(ROOT).encode()).hexdigest()
 MAX_DATA = 20 * 1024 * 1024
@@ -33,6 +35,15 @@ def data_dir() -> Path:
 
 
 DATA_FILE = data_dir() / "session.json"
+# Copies disque : Hyrox (clé « session ») et WOD (clé « events »), chacune dans son fichier.
+DATA_FILES = {"/data": (DATA_FILE, "session"), "/data/wod": (DATA_FILE.with_name("wod.json"), "events")}
+# Le serveur traite les requêtes en parallèle : une seule écriture à la fois.
+WRITE_LOCK = threading.Lock()
+
+
+def saved_at(store) -> float:
+    value = store.get("savedAt") if isinstance(store, dict) else None
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -49,9 +60,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if path == "/data":
+        if path in DATA_FILES:
             try:
-                body = DATA_FILE.read_bytes()
+                body = DATA_FILES[path][0].read_bytes()
             except FileNotFoundError:
                 self.send_error(404)
                 return
@@ -68,10 +79,12 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_PUT(self):
-        """Copie sur le disque de la session enregistrée par le navigateur."""
-        if unquote(urlparse(self.path).path) != "/data":
+        """Copie sur le disque des données enregistrées par le navigateur."""
+        target = DATA_FILES.get(unquote(urlparse(self.path).path))
+        if not target:
             self.send_error(404)
             return
+        data_file, required = target
         # Seule la page de Soundcrossing peut écrire, pas un autre site ouvert dans le navigateur.
         if self.headers.get("Host") != f"127.0.0.1:{PORT}" or self.headers.get("Origin") not in (None, URL) \
                 or self.headers.get("Content-Type") != "application/json":
@@ -83,21 +96,36 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError
             body = self.rfile.read(length)
             store = json.loads(body)
-            if not isinstance(store, dict) or "session" not in store:
+            if not isinstance(store, dict) or required not in store:
                 raise ValueError
         except ValueError:
             self.send_error(400)
             return
-        try:
-            DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-            pending = DATA_FILE.with_name("session.json.tmp")
-            pending.write_bytes(body)
-            if DATA_FILE.exists():  # garde la version précédente en secours
-                shutil.copyfile(DATA_FILE, DATA_FILE.with_name("session-precedente.json"))
-            pending.replace(DATA_FILE)
-        except OSError:
-            self.send_error(500)
-            return
+        with WRITE_LOCK:
+            try:
+                current = json.loads(data_file.read_bytes())
+            except (OSError, ValueError):
+                current = None
+            # Une version plus ancienne (autre navigateur, requête en retard) n’écrase jamais une plus récente.
+            if current is not None and saved_at(store) < saved_at(current):
+                self.send_error(409, "Une version plus récente est déjà enregistrée.")
+                return
+            pending = None
+            try:
+                data_file.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=data_file.parent, prefix=data_file.name + ".", suffix=".tmp", delete=False) as handle:
+                    pending = Path(handle.name)
+                    handle.write(body)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                if data_file.exists():  # garde la version précédente en secours
+                    shutil.copyfile(data_file, data_file.with_name(data_file.stem + "-precedente.json"))
+                pending.replace(data_file)
+            except OSError:
+                if pending is not None:
+                    pending.unlink(missing_ok=True)
+                self.send_error(500)
+                return
         self.send_response(204)
         self.end_headers()
 
@@ -119,6 +147,51 @@ UPDATABLE = (
     "wod.html", "wod.css", "dist/wod-core.js", "dist/wod-app.js", "dist/modele.js", "dist/saisie.js",
     "vendor/xlsx.full.min.js", "vendor/SheetJS-LICENSE.txt", "LISEZ-MOI.txt",
 )
+
+
+REQUIRED = ("index.html", "server.py", "dist/models.js", "dist/core.js", "dist/app.js", "wod.html", "dist/wod-core.js", "dist/wod-app.js")
+BACKUP_DIR = ROOT / "maj-precedente"
+
+
+def install(files, version):
+    """Remplace les fichiers tous ensemble : version complète vérifiée, ancienne version gardée, retour arrière en cas d’échec."""
+    if any(name not in files or not files[name] for name in REQUIRED):
+        raise ValueError("version incomplète")
+    staged = []
+    try:
+        # 1. Toute la nouvelle version est écrite à côté avant de toucher aux fichiers en service.
+        for name, content in files.items():
+            pending = (ROOT / name).with_name(Path(name).name + ".maj")
+            pending.parent.mkdir(parents=True, exist_ok=True)
+            pending.write_bytes(content)
+            staged.append(pending)
+            if pending.read_bytes() != content:
+                raise OSError("écriture incomplète")
+        # 2. L’ancienne version est copiée dans maj-precedente/ (retour arrière possible à la main aussi).
+        shutil.rmtree(BACKUP_DIR, ignore_errors=True)
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            if (ROOT / name).exists():
+                (BACKUP_DIR / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, BACKUP_DIR / name)
+        if VERSION_FILE.exists():
+            shutil.copy2(VERSION_FILE, BACKUP_DIR / "VERSION")
+        # 3. Remplacement. VERSION est écrit en dernier : une coupure avant relance la mise à jour au prochain démarrage.
+        try:
+            for name in files:
+                (ROOT / name).with_name(Path(name).name + ".maj").replace(ROOT / name)
+            VERSION_FILE.write_text(version, encoding="utf-8")
+        except Exception:
+            for name in files:
+                saved = BACKUP_DIR / name
+                if saved.exists():
+                    shutil.copy2(saved, ROOT / name)
+                else:
+                    (ROOT / name).unlink(missing_ok=True)
+            raise
+    finally:
+        for pending in staged:
+            pending.unlink(missing_ok=True)
 
 
 def update():
@@ -145,16 +218,10 @@ def update():
         with urlopen(Request(f"{RELEASE}/Soundcrossing-Windows-x64.zip?t={fresh}", headers={"Cache-Control": "no-cache"}), timeout=120) as response:
             data = response.read()
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            if archive.testzip() is not None:
+                raise ValueError("archive abîmée")
             files = {name: archive.read(f"Soundcrossing/{name}") for name in UPDATABLE if f"Soundcrossing/{name}" in archive.namelist()}
-        if "dist/app.js" not in files:
-            return
-        for name, content in files.items():
-            target = ROOT / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            pending = target.with_name(target.name + ".maj")
-            pending.write_bytes(content)
-            pending.replace(target)
-        VERSION_FILE.write_text(remote, encoding="utf-8")
+        install(files, remote)
         print("Soundcrossing est à jour.", flush=True)
     except Exception:  # Une mise à jour ratée ne doit jamais empêcher la course.
         print("Mise à jour impossible pour le moment ; la version actuelle démarre.", flush=True)

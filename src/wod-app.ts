@@ -1,6 +1,6 @@
 // Module WOD : interface de wod.html. Stockage séparé de l’app Hyrox.
 namespace Wod {
-  const KEY = 'soundcrossing-wod.v1';
+  const KEY = 'soundcrossing-wod.v1', BACKUP = `${KEY}.recovery`, EVENT_KEY = `${KEY}.event`;
   type View = 'athletes' | 'workouts' | 'scores' | 'ranking';
   const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
   const esc = (v: unknown): string => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -26,16 +26,98 @@ namespace Wod {
   let rankingLevel = '';
   let entryLevel = '';
 
-  function load(): void {
-    try { const raw = localStorage.getItem(KEY); if (raw) store = validateStore(JSON.parse(raw)); }
-    catch { toast('Les données WOD enregistrées sont illisibles. Restaurez une sauvegarde.'); }
-    selectEvent(store.selectedId);
+  // Mêmes protections que l’app Hyrox : on n’écrase jamais une version plus récente d’une autre fenêtre,
+  // l’écran n’affiche une modification qu’une fois enregistrée, et la version précédente reste en secours.
+  let loadedRaw: string | null = null, storageBlocked = false;
+  let committed = JSON.stringify(store); // dernier état réellement enregistré, pour annuler une modification refusée
+  function adopt(raw: string): void {
+    store = validateStore(JSON.parse(raw)); committed = JSON.stringify(store);
+    let remembered = '';
+    try { remembered = localStorage.getItem(EVENT_KEY) ?? ''; } catch { /* Vue facultative. */ }
+    selectEvent(state.id && store.events.some(e => e.id === state.id) ? state.id : remembered || store.selectedId);
   }
-  function save(): void {
-    let error = false;
-    try { localStorage.setItem(KEY, JSON.stringify(store)); }
-    catch { error = true; toast('Impossible d’enregistrer dans ce navigateur. Faites une sauvegarde fichier.'); }
-    savedStatus(error);
+  function load(): void {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(KEY);
+      if (raw) adopt(raw); else { const recovery = localStorage.getItem(BACKUP); if (recovery) { adopt(recovery); raw = JSON.stringify(store); localStorage.setItem(KEY, raw); } }
+      loadedRaw = raw;
+    } catch {
+      try {
+        const recovery = localStorage.getItem(BACKUP);
+        if (!recovery) throw Error();
+        adopt(recovery);
+        if (raw) localStorage.setItem(`${KEY}.damaged`, raw);
+        loadedRaw = JSON.stringify(store); localStorage.setItem(KEY, loadedRaw);
+        toast('Copie précédente des données WOD récupérée. Vérifiez les derniers scores.');
+      } catch { storageBlocked = true; toast('Les données WOD enregistrées sont illisibles. Restaurez une sauvegarde (Paramètres).'); }
+    }
+    selectEvent(state.id || store.selectedId);
+  }
+  // Enregistre store ; en cas d’échec, l’écran revient au dernier état enregistré. recovery : restauration volontaire.
+  function save(recovery = false): boolean {
+    try {
+      if (storageBlocked && !recovery) throw Error('Stockage illisible : restaurez une sauvegarde avant de modifier.');
+      const latest = localStorage.getItem(KEY);
+      if (!recovery && latest !== loadedRaw) {
+        if (latest) { loadedRaw = latest; adopt(latest); }
+        throw Error('Les données WOD ont changé dans une autre fenêtre. Vérifiez puis recommencez.');
+      }
+      const candidate = validateStore({ ...store, selectedId: state.id, revision: uid(), savedAt: Date.now() });
+      const encoded = JSON.stringify(candidate);
+      if (latest) {
+        let readable = true;
+        try { validateStore(JSON.parse(latest)); } catch { readable = false; }
+        localStorage.setItem(readable ? BACKUP : `${KEY}.damaged`, latest);
+      }
+      localStorage.setItem(KEY, encoded);
+      loadedRaw = encoded; storageBlocked = false; adopt(encoded); savedStatus(); saveToDisk(encoded);
+      return true;
+    } catch (error) {
+      try { adopt(committed); } catch { /* L’état précédent était déjà validé. */ }
+      savedStatus(true); render();
+      toast(`${error instanceof Error && error.message ? error.message : 'Impossible d’enregistrer dans ce navigateur.'} Aucune modification appliquée.`);
+      return false;
+    }
+  }
+  // Copie sur le disque via server.py, comme pour l’Hyrox : elle survit à un navigateur qui efface ses données.
+  let diskPending: string | null = null, diskBusy = false, diskWarned = false;
+  function saveToDisk(raw: string): void {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+    diskPending = raw;
+    if (diskBusy) return;
+    diskBusy = true;
+    void (async () => {
+      while (diskPending !== null) {
+        const body = diskPending; diskPending = null;
+        try {
+          const response = await fetch('/data/wod', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+          if (response.status === 409) { toast('Une version WOD plus récente est enregistrée sur le disque (autre navigateur). Rechargez la page.'); continue; }
+          if (!response.ok) throw Error();
+          diskWarned = false;
+        } catch {
+          if (!diskWarned) { diskWarned = true; toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et faites une sauvegarde fichier.'); }
+        }
+      }
+      diskBusy = false;
+    })();
+  }
+  async function syncDisk(): Promise<void> {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+    let disk: Store | null = null;
+    try {
+      const response = await fetch('/data/wod', { cache: 'no-store' });
+      if (response.ok) disk = validateStore(await response.json());
+    } catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
+    if (disk && (loadedRaw === null || storageBlocked || (disk.savedAt ?? 0) > (store.savedAt ?? 0))) {
+      const encoded = JSON.stringify(disk);
+      try {
+        const damaged = storageBlocked ? localStorage.getItem(KEY) : null;
+        if (damaged) localStorage.setItem(`${KEY}.damaged`, damaged); else if (loadedRaw) localStorage.setItem(BACKUP, loadedRaw);
+        localStorage.setItem(KEY, encoded); loadedRaw = encoded; storageBlocked = false; } catch { /* Données utilisables à l’écran. */ }
+      adopt(encoded); render(); savedStatus(storageBlocked);
+      toast('Données WOD rechargées depuis la copie sur le disque.');
+    } else if (loadedRaw !== null && !storageBlocked && (!disk || (disk.savedAt ?? 0) < (store.savedAt ?? 0))) saveToDisk(loadedRaw);
   }
   function savedStatus(error = false): void {
     const element = $('save-status'); element.classList.toggle('error', error);
@@ -95,7 +177,7 @@ namespace Wod {
       if (!result.athletes.length) { toast(result.duplicates ? 'Tous ces participants sont déjà inscrits.' : 'Aucun participant trouvé dans le fichier.'); return; }
       const doublons = result.duplicates ? `\n${result.duplicates} déjà inscrit(s) seront ignorés.` : '';
       if (!confirm(`Ajouter ${result.athletes.length} inscription(s) à « ${state.title} » ?${doublons}`)) return;
-      state.athletes.push(...result.athletes); save(); render(); toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
+      state.athletes.push(...result.athletes); if (!save()) return; render(); toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
     } catch (error) { toast(error instanceof Error ? error.message : 'Impossible de lire ce fichier.'); }
   }
   function renderAthletes(): void {
@@ -197,7 +279,7 @@ namespace Wod {
       const scores = state.scores[w.id] ??= {};
       if (hasScore(w, score)) scores[athleteId] = score; else delete scores[athleteId];
       if (w.type === 'time') { const f = row.querySelector<HTMLInputElement>('[data-field="time"]'); if (f) f.value = Saisie.fromMs(score.timeMs); }
-      save();
+      if (!save()) return;
       $(`saved-${athleteId}`).textContent = scoreText(w, scores[athleteId]);
     } catch (error) {
       input.classList.add('invalid'); toast((error as Error).message);
@@ -275,13 +357,15 @@ namespace Wod {
     const athlete: Athlete = { id: old?.id ?? uid(), bib: old?.bib ?? nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '', ...(state.levels.length ? { level: entryLevel } : {}) };
     const i = state.athletes.findIndex(a => a.id === athlete.id);
     if (i >= 0) state.athletes[i] = athlete; else state.athletes.push(athlete);
-    save(); $<HTMLDialogElement>('entry-dialog').close(); render(); toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
+    if (!save()) { $('entry-error').textContent = 'Non enregistré : réessayez.'; return; }
+    $<HTMLDialogElement>('entry-dialog').close(); render(); toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
   }
   function deleteAthlete(a: Athlete | undefined): boolean {
     if (!a || !confirm(`Supprimer ${athleteLabel(a)} et ses scores ?`)) return false;
     state.athletes = state.athletes.filter(x => x !== a);
     for (const s of Object.values(state.scores)) delete s[a.id];
-    save(); render(); return true;
+    if (!save()) return false;
+    render(); return true;
   }
 
   const HELP: Record<ScoreType, string> = {
@@ -317,7 +401,8 @@ namespace Wod {
     if (old && old.type !== type) delete state.scores[id];
     const i = state.workouts.findIndex(w => w.id === id);
     if (i >= 0) state.workouts[i] = workout; else state.workouts.push(workout);
-    save(); $<HTMLDialogElement>('workout-dialog').close(); render(); toast(i >= 0 ? 'WOD modifié.' : 'WOD ajouté.');
+    if (!save()) { $('workout-error').textContent = 'Non enregistré : réessayez.'; return; }
+    $<HTMLDialogElement>('workout-dialog').close(); render(); toast(i >= 0 ? 'WOD modifié.' : 'WOD ajouté.');
   }
 
   function openEvent(edit: boolean): void {
@@ -355,12 +440,14 @@ namespace Wod {
       target.levels = [...levels];
     }
     if (!existing) { store.events.push(target); view = 'athletes'; }
-    selectEvent(target.id); save(); $<HTMLDialogElement>('session-dialog').close(); render(); toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
+    selectEvent(target.id); rememberEvent(); if (!save()) { $('session-error').textContent = 'Non enregistré : réessayez.'; return; }
+    $<HTMLDialogElement>('session-dialog').close(); render(); toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
   }
   function deleteEvent(): void {
     if (!confirm(`Supprimer l’événement « ${state.title} », ses inscriptions, ses WOD et ses scores ?`)) return;
     store.events = store.events.filter(e => e.id !== state.id);
-    selectEvent(''); save(); $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement supprimé.');
+    selectEvent(''); if (!save()) return;
+    $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement supprimé.');
   }
 
   function exportExcel(): void {
@@ -373,7 +460,8 @@ namespace Wod {
   function loadDemo(): void {
     const example = demo(today());
     example.id = `exemple-${uid()}`;
-    store.events.push(example); selectEvent(example.id); save(); view = 'ranking'; rankingTab = 'general'; render();
+    store.events.push(example); selectEvent(example.id); rememberEvent(); if (!save()) return;
+    view = 'ranking'; rankingTab = 'general'; render();
     $<HTMLDialogElement>('settings-dialog').close(); toast('Exemple chargé : 10 inscrits et 3 WOD. Regardez chaque onglet.');
   }
 
@@ -395,7 +483,7 @@ namespace Wod {
       else if (d.entryFormat) { entryFormat = d.entryFormat as Athlete['format']; $('entry-error').textContent = ''; syncEntryForm(); }
       else if (d.gender && d.person) { if (d.person === '1') gender1 = d.gender as 'H' | 'F'; else gender2 = d.gender as 'H' | 'F'; $('entry-error').textContent = ''; syncEntryForm(); } else if (d.deleteWorkout) {
         const w = state.workouts.find(x => x.id === d.deleteWorkout);
-        if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; save(); render(); }
+        if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; if (save()) render(); }
       } else if (d.wod) { selectedWod = d.wod; render(); }
       else if (d.rankTab) { rankingTab = d.rankTab; render(); }
       else if (d.rankCat) { rankingCat = d.rankCat; render(); }
@@ -421,28 +509,52 @@ namespace Wod {
     $('new-event-button').addEventListener('click', () => openEvent(false));
     $('no-event-create').addEventListener('click', () => openEvent(false));
     $('delete-event').addEventListener('click', deleteEvent);
-    $('event-selector').addEventListener('change', () => { selectEvent($<HTMLSelectElement>('event-selector').value); save(); render(); });
+    $('event-selector').addEventListener('change', () => { selectEvent($<HTMLSelectElement>('event-selector').value); rememberEvent(); render(); });
     $('settings-button').addEventListener('click', () => $<HTMLDialogElement>('settings-dialog').showModal());
     $('export-button').addEventListener('click', exportExcel);
-    $('backup-button').addEventListener('click', () => download(`sauvegarde-wod-${today()}.json`, JSON.stringify(store, null, 2), 'application/json'));
+    $('backup-button').addEventListener('click', exportBackup);
     $('restore-button').addEventListener('click', () => $('restore-file').click());
     $<HTMLInputElement>('restore-file').addEventListener('change', async e => {
       const file = (e.target as HTMLInputElement).files?.[0]; (e.target as HTMLInputElement).value = '';
       if (!file) return;
-      try { store = validateStore(JSON.parse(await file.text())); selectEvent(store.selectedId); save(); render(); $<HTMLDialogElement>('settings-dialog').close(); toast('Sauvegarde restaurée.'); }
-      catch (error) { toast((error as Error).message); }
+      try {
+        if (file.size > 15 * 1024 * 1024) throw Error('Sauvegarde trop volumineuse.');
+        const imported = validateStore(JSON.parse(await file.text()));
+        const athletes = imported.events.reduce((n, ev) => n + ev.athletes.length, 0);
+        if (!confirm(`Restaurer cette sauvegarde (${imported.events.length} événement(s), ${athletes} inscription(s)) ?\n\nLes données WOD actuelles seront remplacées. Une sauvegarde des données actuelles sera téléchargée avant.`)) return;
+        if (store.events.length) exportBackup();
+        store = imported; selectEvent(imported.selectedId); rememberEvent();
+        if (!save(true)) return;
+        render(); $<HTMLDialogElement>('settings-dialog').close(); toast('Sauvegarde restaurée.');
+      } catch (error) { toast((error as Error).message); }
     });
     $<HTMLInputElement>('import-file').addEventListener('change', e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; input.value = ''; if (file) void importFile(file); });
     $('no-event-demo').addEventListener('click', loadDemo);
     $('demo-settings').addEventListener('click', loadDemo);
     $('reset-button').addEventListener('click', () => {
-      if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?')) return;
-      store = emptyStore(); selectEvent(''); save(); view = 'athletes'; render(); $<HTMLDialogElement>('settings-dialog').close();
+      if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?\n\nUne sauvegarde des données actuelles sera téléchargée avant.')) return;
+      if (store.events.length) exportBackup();
+      store = emptyStore(); selectEvent(''); if (!save()) return;
+      view = 'athletes'; render(); $<HTMLDialogElement>('settings-dialog').close();
     });
   }
 
+  function rememberEvent(): void { try { localStorage.setItem(EVENT_KEY, state.id); } catch { /* Vue facultative. */ } }
+  function exportBackup(): void { download(`sauvegarde-wod-${today()}.json`, JSON.stringify({ ...store, selectedId: state.id }, null, 2), 'application/json'); }
+
   document.addEventListener('DOMContentLoaded', () => {
-    load(); bind(); render(); savedStatus();
+    load(); bind(); render(); savedStatus(storageBlocked); void syncDisk();
+    // Une autre fenêtre a enregistré : on affiche sa version au lieu de l’écraser plus tard.
+    window.addEventListener('storage', event => {
+      if (event.key !== KEY && event.key !== null) return;
+      try {
+        const latest = localStorage.getItem(KEY);
+        if (latest === loadedRaw) return;
+        loadedRaw = latest;
+        if (latest) { adopt(latest); storageBlocked = false; render(); savedStatus(); toast('Données WOD mises à jour depuis une autre fenêtre.'); }
+        else { storageBlocked = true; savedStatus(true); toast('Les données WOD ont été supprimées du navigateur. Faites une sauvegarde fichier.'); }
+      } catch { storageBlocked = true; savedStatus(true); toast('Les données WOD de l’autre fenêtre sont illisibles. Faites une sauvegarde fichier.'); }
+    });
     const tick = (): void => { $('wall-clock').textContent = new Date().toLocaleTimeString('fr-FR'); };
     tick(); window.setInterval(tick, 1000);
   });
