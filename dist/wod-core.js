@@ -1,5 +1,5 @@
 "use strict";
-// Module WOD (version test) : logique pure, sans accès à la page. Indépendant de l’app Hyrox.
+// Module WOD : logique pure, sans accès à la page. Indépendant de l’app Hyrox.
 var Wod;
 (function (Wod) {
     Wod.TYPE_LABELS = {

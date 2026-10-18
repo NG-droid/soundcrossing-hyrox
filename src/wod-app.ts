@@ -1,4 +1,4 @@
-// Module WOD (version test) : interface de wod.html. Stockage séparé de l’app Hyrox.
+// Module WOD : interface de wod.html. Stockage séparé de l’app Hyrox.
 namespace Wod {
   const KEY = 'soundcrossing-wod.v1';
   type View = 'athletes' | 'workouts' | 'scores' | 'ranking';

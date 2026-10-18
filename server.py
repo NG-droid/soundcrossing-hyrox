@@ -61,7 +61,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if path not in {"/", "/index.html", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/assets/soundcrossing-logo.png", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"}:
+        if path not in {"/", "/index.html", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/assets/soundcrossing-logo.png", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js",
+                        "/wod.html", "/wod.css", "/dist/wod-core.js", "/dist/wod-app.js"}:
             self.send_error(404)
             return
         super().do_GET()
@@ -115,6 +116,7 @@ UPDATABLE = (
     "index.html", "styles.css", "club.css", "server.py",
     "assets/soundcrossing-logo.jpg", "assets/soundcrossing-logo.png", "assets/ORIGINE.md",
     "dist/models.js", "dist/core.js", "dist/app.js",
+    "wod.html", "wod.css", "dist/wod-core.js", "dist/wod-app.js",
     "vendor/xlsx.full.min.js", "vendor/SheetJS-LICENSE.txt", "LISEZ-MOI.txt",
 )
 

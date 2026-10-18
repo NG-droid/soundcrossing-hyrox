@@ -1,5 +1,5 @@
 "use strict";
-// Module WOD (version test) : interface de wod.html. Stockage séparé de l’app Hyrox.
+// Module WOD : interface de wod.html. Stockage séparé de l’app Hyrox.
 var Wod;
 (function (Wod) {
     const KEY = 'soundcrossing-wod.v1';
