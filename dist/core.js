@@ -107,6 +107,10 @@ var Pace;
         return entry.format === 'DUO' ? entry.category : entry.category || 'SOLO';
     }
     Pace.formatKey = formatKey;
+    Pace.LEVELS = ['Pro', 'Open'];
+    // « Pro · Duo HH » quand l’événement a des niveaux, sinon « Duo HH ».
+    function groupLabel(level, formatText) { return level ? `${level} · ${formatText}` : formatText; }
+    Pace.groupLabel = groupLabel;
     function formatLabel(entry) {
         return entry.format === 'DUO' ? `Duo ${entry.category}` : entry.category ? `Solo ${entry.category}` : 'Solo · à préciser';
     }
@@ -139,7 +143,10 @@ var Pace;
         const format = v.format ?? v.defaultFormat ?? 'MIXED';
         if (!['SOLO', 'DUO', 'MIXED'].includes(String(format)))
             throw Error('Format d’événement attendu : Solo, Duo ou Solo + Duo.');
-        return { id: v.id, title: v.title.trim(), date: v.date, format: format, previousTitles: v.previousTitles ?? [] };
+        if (v.levels !== undefined && (!Array.isArray(v.levels) || v.levels.some(level => !Pace.LEVELS.includes(String(level)))))
+            throw Error('Niveaux attendus : Pro et Open.');
+        const levels = Array.isArray(v.levels) && v.levels.length ? [...Pace.LEVELS] : [];
+        return { id: v.id, title: v.title.trim(), date: v.date, format: format, levels, previousTitles: v.previousTitles ?? [] };
     }
     Pace.validateRace = validateRace;
     function assertRaceFormat(race, format) {
@@ -154,6 +161,12 @@ var Pace;
         return formats;
     }
     Pace.eventRankingFormats = eventRankingFormats;
+    // Classements de l’événement : chaque niveau (Pro, Open) a ses propres formats.
+    function eventRankingGroups(race, entries) {
+        const levels = race?.levels?.length ? race.levels : [''], formats = eventRankingFormats(race, entries);
+        return levels.flatMap(level => formats.map(format => ({ level, format })));
+    }
+    Pace.eventRankingGroups = eventRankingGroups;
     function plannedAt(race, entry) {
         if (!entry.scheduled)
             return null;
@@ -196,9 +209,9 @@ var Pace;
         });
     }
     Pace.ranking = ranking;
-    function rankingFor(session, format, date) {
+    function rankingFor(session, format, date, level = '') {
         const races = new Set(session.races.filter(race => race.date === date).map(race => race.id));
-        return ranking(session.entries.filter(entry => races.has(entry.raceId) && formatKey(entry) === format));
+        return ranking(session.entries.filter(entry => races.has(entry.raceId) && formatKey(entry) === format && (entry.level ?? '') === level));
     }
     Pace.rankingFor = rankingFor;
     function isResolved(entry) {
@@ -217,12 +230,12 @@ var Pace;
         return entries.length > 0 && entries.every(isResolved);
     }
     Pace.eventResultsFinal = eventResultsFinal;
-    function podiumFor(session, race, format) {
+    function podiumFor(session, race, format, level = '') {
         if (!eventResultsFinal(session, race))
             throw Error('Complétez tous les résultats ou forfaits avant d’afficher le podium final.');
         if (!eventRankingFormats(race, session.entries).includes(format))
             throw Error('Cette catégorie ne fait pas partie de l’événement.');
-        const ranked = rankingFor(session, format, race.date);
+        const ranked = rankingFor(session, format, race.date, level);
         return [1, 2, 3].map(rank => ({ rank, entries: ranked.filter(r => r.rank === rank).map(r => r.entry) })).filter(place => place.entries.length > 0);
     }
     Pace.podiumFor = podiumFor;
@@ -294,14 +307,14 @@ var Pace;
         if (!eventResultsFinal(session, race))
             throw Error('Complétez chaque résultat ou indiquez Forfait avant d’exporter le CSV final.');
         const races = new Map(session.races.filter(r => r.date === race.date).map(r => [r.id, r]));
-        const formats = eventRankingFormats(race, session.entries);
-        const rows = [['Rang', 'Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Heure d’arrivée', 'Temps total', 'Statut', 'Événement', 'Date', 'Date d’arrivée']];
-        for (const format of formats) {
-            const ranked = rankingFor(session, format, race.date), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
-            const entries = session.entries.filter(e => races.has(e.raceId) && formatKey(e) === format);
+        const withLevels = (race.levels?.length ?? 0) > 0;
+        const rows = [['Rang', ...(withLevels ? ['Niveau'] : []), 'Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Heure d’arrivée', 'Temps total', 'Statut', 'Événement', 'Date', 'Date d’arrivée']];
+        for (const { level, format } of eventRankingGroups(race, session.entries)) {
+            const ranked = rankingFor(session, format, race.date, level), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
+            const entries = session.entries.filter(e => races.has(e.raceId) && formatKey(e) === format && (e.level ?? '') === level);
             entries.sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) || label(a).localeCompare(label(b), 'fr'));
             for (const e of entries)
-                rows.push([ranks.get(e.id) ?? '', formatLabel(e), e.name1, e.name2, e.startedAt === null ? e.scheduled : timeOfDay(e.startedAt), e.arrivedAt === null ? '' : timeOfDay(e.arrivedAt), e.durationMs === null ? '' : clock(e.durationMs), statusLabel(e), races.get(e.raceId).title, race.date, e.arrivedAt === null ? '' : localDate(new Date(e.arrivedAt))]);
+                rows.push([ranks.get(e.id) ?? '', ...(withLevels ? [level] : []), formatLabel(e), e.name1, e.name2, e.startedAt === null ? e.scheduled : timeOfDay(e.startedAt), e.arrivedAt === null ? '' : timeOfDay(e.arrivedAt), e.durationMs === null ? '' : clock(e.durationMs), statusLabel(e), races.get(e.raceId).title, race.date, e.arrivedAt === null ? '' : localDate(new Date(e.arrivedAt))]);
         }
         return encodeCSV(rows);
     }
@@ -365,6 +378,9 @@ var Pace;
         const legacyId = `legacy-${v.format}-${v.category || 'solo'}`;
         if (v.raceId !== undefined && (typeof v.raceId !== 'string' || !v.raceId || v.raceId.length > 160))
             throw Error('Course du participant invalide.');
+        const level = v.level ?? '';
+        if (level !== '' && !Pace.LEVELS.includes(String(level)))
+            throw Error('Niveau attendu : Pro ou Open.');
         const arrivedAt = v.arrivedAt ?? null;
         const resultMode = v.resultMode ?? (v.durationMs !== null && arrivedAt === null ? 'duration' : 'arrival');
         if (resultMode !== 'arrival' && resultMode !== 'duration')
@@ -375,7 +391,7 @@ var Pace;
             throw Error('Un forfait ne peut pas avoir de départ enregistré.');
         if (arrivedAt !== null && (typeof arrivedAt !== 'number' || !Number.isFinite(arrivedAt) || arrivedAt <= 0 || v.status !== 'finished' || typeof v.startedAt !== 'number' || arrivedAt - v.startedAt !== v.durationMs))
             throw Error('Les horaires et le résultat ne correspondent pas.');
-        return { id: v.id, bib: v.bib.trim(), raceId: v.raceId ?? legacyId, name1: v.name1.trim(), name2: v.name2.trim(), gender1: gender1, gender2: gender2, format: v.format, category: v.category, scheduled, startedAt: v.startedAt, arrivedAt: arrivedAt, durationMs: v.durationMs, status: v.status, resultMode };
+        return { id: v.id, bib: v.bib.trim(), raceId: v.raceId ?? legacyId, name1: v.name1.trim(), name2: v.name2.trim(), gender1: gender1, gender2: gender2, format: v.format, category: v.category, level: level, scheduled, startedAt: v.startedAt, arrivedAt: arrivedAt, durationMs: v.durationMs, status: v.status, resultMode };
     }
     Pace.validateEntry = validateEntry;
     function validateSession(value, migrateLegacyFormats = false) {
@@ -464,8 +480,11 @@ var Pace;
                 const category = categoryText === 'MF' ? 'HF' : categoryText;
                 if (race && !category)
                     throw Error('Précisez le format : Solo H/F ou Duo HH/FF/HF.');
+                const levelText = normalize(get('level')), level = race?.levels?.find(l => normalize(l) === levelText) ?? '';
+                if (race?.levels?.length && !level)
+                    throw Error(levelText ? `Niveau « ${text('level')} » inconnu : Pro ou Open.` : 'Précisez le niveau : Pro ou Open.');
                 const durationMs = parseDuration(get('duration'));
-                const entry = validateEntry({ id: crypto.randomUUID(), bib: text('bib'), raceId: race?.id, name1: text('name1'), name2: format === 'DUO' ? text('name2') : '', format, category, scheduled: parseScheduled(get('scheduled')), startedAt: null, durationMs, status: durationMs === null ? 'waiting' : 'finished' });
+                const entry = validateEntry({ id: crypto.randomUUID(), bib: text('bib'), raceId: race?.id, name1: text('name1'), name2: format === 'DUO' ? text('name2') : '', format, category, level, scheduled: parseScheduled(get('scheduled')), startedAt: null, durationMs, status: durationMs === null ? 'waiting' : 'finished' });
                 if (race)
                     plannedAt(race, entry);
                 if (format === 'SOLO' && text('name2'))

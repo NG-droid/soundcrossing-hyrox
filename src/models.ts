@@ -7,20 +7,22 @@ namespace Pace {
   export type ResultMode = 'arrival' | 'duration';
   export interface DurationFields { hours: string; minutes: string; seconds: string; }
   export interface PodiumPlace { rank: 1 | 2 | 3; entries: Entry[]; }
-  export interface PodiumSelection { raceId: string; format: RankingFormat; }
+  export interface PodiumSelection { raceId: string; format: RankingFormat; level: string; }
   export interface Settings { photoTemplate: PhotoTemplate; }
   // running et abandoned restent lisibles pour préserver les anciennes sauvegardes.
   export type Status = 'waiting' | 'running' | 'finished' | 'abandoned' | 'withdrawn';
   export interface Race {
     id: string; title: string; date: string;
     format: Format | 'MIXED';
+    // Niveaux Hyrox : [] (un seul classement) ou ['Pro', 'Open'] (classements séparés).
+    levels: string[];
     previousTitles: string[];
   }
   export interface Entry {
     id: string; bib: string; name1: string; name2: string;
     gender1: Gender; gender2: Gender;
     raceId: string;
-    format: Format; category: Category; scheduled: string;
+    format: Format; category: Category; level: string; scheduled: string;
     startedAt: number | null; arrivedAt: number | null; durationMs: number | null; status: Status;
     resultMode: ResultMode;
   }
@@ -30,7 +32,7 @@ namespace Pace {
   export interface Snapshot { label: string; session: Session; }
   export interface EditSnapshot { kind: 'race' | 'entry'; id: string; raceId: string; value: string; }
   export interface Store { version: 4; revision: string; savedAt: number; session: Session; history: Snapshot[]; settings: Settings; }
-  export type ImportField = 'bib' | 'name1' | 'name2' | 'format' | 'category' | 'scheduled' | 'duration';
+  export type ImportField = 'bib' | 'name1' | 'name2' | 'format' | 'category' | 'level' | 'scheduled' | 'duration';
   export interface ImportRow { line: number; entry: Entry | null; error: string; duplicate: boolean; }
   export interface Worksheet { [key: string]: unknown; }
   export interface Workbook { SheetNames: string[]; Sheets: Record<string, Worksheet>; }

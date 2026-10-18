@@ -15,6 +15,9 @@ namespace PaceApp {
   let podiumSelection: Pace.PodiumSelection | null = null, fullscreenOwned = false;
   let selectedRaceId = '', importRaceId = '';
   let activeFormat: 'all' | Pace.RankingFormat = 'all';
+  let activeLevel = ''; // '' = tous les niveaux
+  let selectedLevel = '';
+  const lastEntryLevels = new Map<string, string>();
   const lastEntryFormats = new Map<string, string>();
   let selectedEntryFormat: Pace.Format | '' = '';
   let selectedGender1: Pace.Gender = '', selectedGender2: Pace.Gender = '';
@@ -29,6 +32,7 @@ namespace PaceApp {
     { key: 'name1', label: 'Participant 1', aliases: ['participant 1', 'participant1', 'nom', 'nom 1', 'nom1', 'participant', 'athlete', 'name'] },
     { key: 'name2', label: 'Participant 2', aliases: ['participant 2', 'participant2', 'nom 2', 'nom2', 'partenaire', 'binome'] },
     { key: 'format', label: 'Format', aliases: ['format', 'type', 'categorie', 'catégorie'] },
+    { key: 'level', label: 'Niveau (Pro / Open)', aliases: ['niveau', 'level', 'division'] },
     { key: 'scheduled', label: 'Heure de départ', aliases: ['heure de depart', 'heure de passage', 'passage', 'heure', 'depart', 'heure depart'] },
   ];
   function toast(message: string, error = false): void {
@@ -161,14 +165,13 @@ namespace PaceApp {
   // Départ affiché en hh:mm ; les secondes ne servent qu’au résultat.
   function departureText(entry: Pace.Entry): string { return entry.startedAt === null ? entry.scheduled.slice(0, 5) || '—' : Pace.timeOfDay(entry.startedAt).slice(0, 5); }
   function resultRanking(): { entry: Pace.Entry; rank: number }[] {
-    const visible = Pace.eventRankingFormats(currentRace(), raceEntries());
-    return formatOptions.filter(option => visible.includes(option.key)).filter(option => activeFormat === 'all' || option.key === activeFormat).flatMap(option => Pace.rankingFor(state.session, option.key, currentRace()?.date ?? state.session.date));
+    return Pace.eventRankingGroups(currentRace(), raceEntries()).filter(g => (!activeLevel || g.level === activeLevel) && (activeFormat === 'all' || g.format === activeFormat)).flatMap(g => Pace.rankingFor(state.session, g.format, currentRace()?.date ?? state.session.date, g.level));
   }
   function filtered(): Pace.Entry[] {
     const search = normalize($<HTMLInputElement>('search').value);
     const sort = $<HTMLSelectElement>('sort').value;
     if (view === 'results') return resultRanking().map(r => r.entry).filter(e => !search || normalize(label(e)).includes(search));
-    return raceEntries().filter(e => (view !== 'live' || !Pace.isResolved(e)) && (activeFormat === 'all' || Pace.formatKey(e) === activeFormat) && (!search || normalize(label(e)).includes(search))).sort((a, b) => {
+    return raceEntries().filter(e => (view !== 'live' || !Pace.isResolved(e)) && (activeFormat === 'all' || Pace.formatKey(e) === activeFormat) && (!activeLevel || e.level === activeLevel) && (!search || normalize(label(e)).includes(search))).sort((a, b) => {
       if (sort === 'time' || view === 'results' && sort === 'schedule') return (a.durationMs ?? Infinity) - (b.durationMs ?? Infinity) || label(a).localeCompare(label(b), 'fr');
       if (sort === 'name') return label(a).localeCompare(label(b), 'fr');
       return (departureText(a) === '—' ? '99:99' : departureText(a)).localeCompare(departureText(b) === '—' ? '99:99' : departureText(b)) || label(a).localeCompare(label(b), 'fr');
@@ -181,6 +184,10 @@ namespace PaceApp {
     const race = currentRace(); selectedRaceId = race?.id ?? '';
     const entries = raceEntries(), visibleFormats = Pace.eventRankingFormats(race, entries);
     if (activeFormat !== 'all' && !visibleFormats.includes(activeFormat)) activeFormat = 'all';
+    if (!race?.levels.includes(activeLevel)) activeLevel = '';
+    const levelEntries = entries.filter(e => !activeLevel || e.level === activeLevel);
+    $('level-chips').hidden = !race?.levels.length;
+    $('level-chips').innerHTML = race?.levels.length ? [{ key: '', label: 'Tous les niveaux' }, ...race.levels.map(l => ({ key: l, label: l }))].map(option => `<button class="format-chip ${activeLevel === option.key ? 'active' : ''}" data-level-filter="${esc(option.key)}" aria-pressed="${activeLevel === option.key}">${option.label}<small>${entries.filter(e => !option.key || e.level === option.key).length}</small></button>`).join('') : '';
     const running = entries.filter(e => !Pace.isResolved(e)).length, finished = entries.filter(e => e.status === 'finished').length;
     const finalResults = Pace.eventResultsFinal(state.session, race);
     $('results-progress').textContent = finalResults ? 'Résultats complets · Classements définitifs' : `${running} inscription${running > 1 ? 's' : ''} à compléter · Classements provisoires`;
@@ -204,7 +211,7 @@ namespace PaceApp {
     $('view-title').innerHTML = `${view === 'results' ? 'Classements du jour' : view === 'live' ? 'Arrivées à compléter' : 'Participants du jour'} <span id="list-count"></span>`;
     $('view-description').textContent = view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
     $('pending-filter').classList.toggle('active', view === 'live'); $('pending-filter').setAttribute('aria-pressed', String(view === 'live'));
-    $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${entries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
+    $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
     $('format-chips').hidden = !race;
     $('rank-heading').hidden = view !== 'results';
     $('rank-heading').textContent = finalResults ? 'RANG' : 'RANG PROVISOIRE';
@@ -227,8 +234,8 @@ namespace PaceApp {
     const ranks = new Map(resultRanking().map(r => [r.entry.id, r.rank]));
     let previousFormat = '';
     $('entries-body').innerHTML = list.map(e => {
-      const key = Pace.formatKey(e), group = view === 'results' && activeFormat === 'all' && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.formatLabel(e))}</th></tr>` : ''; previousFormat = key;
-      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}<td><button class="names-button duo-names" data-action="result" data-id="${esc(e.id)}"><span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}</button></td><td><span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${key}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td><td class="recorded-time">${e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actionButton('result', e.id, e.status === 'abandoned' || e.status === 'withdrawn' ? 'Modifier le statut' : e.arrivedAt === null ? 'Saisir le résultat' : 'Corriger')}${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}${actionButton('edit', e.id, '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>', 'icon', `Modifier l’inscription de ${label(e)}`)}</div></td></tr>`;
+      const key = `${e.level}:${Pace.formatKey(e)}`, group = view === 'results' && (activeFormat === 'all' || !!race?.levels.length && !activeLevel) && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.groupLabel(e.level, Pace.formatLabel(e)))}</th></tr>` : ''; previousFormat = key;
+      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}<td><button class="names-button duo-names" data-action="result" data-id="${esc(e.id)}"><span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}</button></td><td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td><td class="recorded-time">${e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actionButton('result', e.id, e.status === 'abandoned' || e.status === 'withdrawn' ? 'Modifier le statut' : e.arrivedAt === null ? 'Saisir le résultat' : 'Corriger')}${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}${actionButton('edit', e.id, '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>', 'icon', `Modifier l’inscription de ${label(e)}`)}</div></td></tr>`;
     }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : 6}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
     const focusedEntries = view === 'results' ? list : entries;
     if (!focusedEntries.some(e => e.id === focusId)) focusId = focusedEntries.find(e => !Pace.isResolved(e))?.id ?? focusedEntries.at(-1)?.id ?? '';
@@ -260,11 +267,14 @@ namespace PaceApp {
       button.setAttribute('aria-pressed', String(button.dataset.gender === selected));
     });
     document.querySelectorAll<HTMLButtonElement>('[data-entry-format]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.entryFormat === selectedEntryFormat)));
+    document.querySelectorAll<HTMLButtonElement>('[data-entry-level]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.entryLevel === selectedLevel)));
     entryFormatFields();
     try {
       if (!selectedEntryFormat) throw Error('Choisissez Solo ou Duo.');
       const category = Pace.categoryFromGenders(selectedEntryFormat, selectedGender1, selectedGender2);
-      $('registration-category').textContent = `Format : ${selectedEntryFormat === 'DUO' ? `Duo ${category}` : `Solo ${category}`}`;
+      const race = state.session.races.find(r => r.id === field($<HTMLFormElement>('entry-form'), 'raceId').value);
+      if (race?.levels.length && !selectedLevel) throw Error('Choisissez le niveau : Pro ou Open.');
+      $('registration-category').textContent = `Format : ${Pace.groupLabel(race?.levels.length ? selectedLevel : '', selectedEntryFormat === 'DUO' ? `Duo ${category}` : `Solo ${category}`)}`;
       $('registration-category').classList.add('complete');
     } catch (error) {
       $('registration-category').textContent = error instanceof Error ? error.message : 'Choisissez H ou F.';
@@ -285,6 +295,7 @@ namespace PaceApp {
     field(form, 'id').value = race?.id ?? ''; field(form, 'title').value = race?.title ?? 'Soundcrossing'; field(form, 'date').value = race?.date ?? localDate();
     editSnapshots.set(form, Pace.captureEdit(state.session, 'race', race?.id ?? ''));
     if (race) form.querySelector<HTMLInputElement>(`[name="format"][value="${race.format}"]`)!.checked = true;
+    form.querySelector<HTMLInputElement>(`[name="levels"][value="${race?.levels.length ? 'pro' : 'none'}"]`)!.checked = true;
     $('race-dialog-title').textContent = race ? 'Modifier l’événement' : 'Créer un événement';
     $('save-race-button').textContent = race ? 'Enregistrer' : 'Créer l’événement';
     $<HTMLDialogElement>('session-dialog').showModal(); field(form, 'title').focus();
@@ -296,7 +307,8 @@ namespace PaceApp {
       const id = field(form, 'id').value, old = state.session.races.find(race => race.id === id);
       const format = new FormData(form).get('format');
       if (format !== 'SOLO' && format !== 'DUO' && format !== 'MIXED') throw Error('Choisissez le format de l’événement : Solo, Duo ou Solo + Duo.');
-      const race = Pace.validateRace({ id: old?.id ?? crypto.randomUUID(), title: field(form, 'title').value.trim(), date: field(form, 'date').value, format, previousTitles: old?.previousTitles ?? [] });
+      const levels = new FormData(form).get('levels') === 'pro' ? Pace.LEVELS : [];
+      const race = Pace.validateRace({ id: old?.id ?? crypto.randomUUID(), title: field(form, 'title').value.trim(), date: field(form, 'date').value, format, levels, previousTitles: old?.previousTitles ?? [] });
       if (old && old.date !== race.date && state.session.entries.some(e => e.raceId === id && e.startedAt !== null)) throw Error('Des départs sont déjà enregistrés à cette date. Créez un nouvel événement pour une autre journée.');
       if (state.session.races.some(r => r.id !== race.id && normalize(r.title) === normalize(race.title) && r.date === race.date)) throw Error('Cet événement existe déjà à cette date.');
       const incompatible = state.session.entries.find(e => e.raceId === race.id && race.format !== 'MIXED' && e.format !== race.format);
@@ -304,7 +316,9 @@ namespace PaceApp {
       const previousRaceId = selectedRaceId; selectedRaceId = race.id;
       if (commit(`${old ? 'modification' : 'création'} de l’événement ${race.title}`, session => {
         const index = session.races.findIndex(r => r.id === race.id); if (index >= 0) session.races[index] = race; else session.races.push(race);
-      }, form)) { focusId = ''; activeFormat = 'all'; rememberEvent(); $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement enregistré.'); }
+        // Niveaux activés : les inscrits déjà là passent en Open (modifiable ensuite). Niveaux retirés : un seul classement.
+        for (const e of session.entries) if (e.raceId === race.id) e.level = race.levels.length ? e.level || 'Open' : '';
+      }, form)) { focusId = ''; activeFormat = 'all'; activeLevel = ''; rememberEvent(); $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement enregistré.'); }
       else selectedRaceId = previousRaceId;
     } catch (error) { $('session-error').textContent = error instanceof Error ? error.message : 'Événement invalide.'; }
   }
@@ -316,6 +330,8 @@ namespace PaceApp {
     editSnapshots.set(form, Pace.captureEdit(state.session, 'entry', entry?.id ?? '', race.id));
     $('entry-title').textContent = entry ? 'Modifier l’inscription' : race.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
     $('entry-format-choice').hidden = race.format !== 'MIXED';
+    $('entry-level-choice').hidden = !race.levels.length;
+    selectedLevel = race.levels.length ? entry?.level || lastEntryLevels.get(race.id) || '' : '';
     $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
     $<HTMLButtonElement>('delete-entry').hidden = !entry;
     for (const name of ['name1', 'name2'] as const) if (entry) field(form, name).value = entry[name];
@@ -348,7 +364,8 @@ namespace PaceApp {
       if (!selectedEntryFormat) throw Error('Choisissez Solo ou Duo.');
       const format = selectedEntryFormat; Pace.assertRaceFormat(race, format);
       const category = Pace.categoryFromGenders(format, selectedGender1, selectedGender2);
-      const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
+      if (race.levels.length && !race.levels.includes(selectedLevel)) throw Error('Choisissez le niveau : Pro ou Open.');
+      const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, level: race.levels.length ? selectedLevel : '', gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
       if (state.session.entries.some(e => e.id !== entry.id && identity(e) === identity(entry))) throw Error('Ce participant ou duo est déjà inscrit à cette course.');
       if (!old && state.session.entries.length >= Pace.MAX_ENTRIES) throw Error('Limite de 3 000 départs par session.');
       Pace.plannedAt(race, entry); saveValidatedEntry(entry, !!old);
@@ -359,7 +376,7 @@ namespace PaceApp {
       const index = session.entries.findIndex(e => e.id === entry.id);
       if (index >= 0) session.entries[index] = entry; else session.entries.push(entry);
     }, $<HTMLFormElement>('entry-form'));
-    if (success) { lastEntryFormats.set(entry.raceId, `${entry.format}_${entry.category}`); focusId = entry.id; $<HTMLDialogElement>('entry-dialog').close(); render(); toast('Participant enregistré.'); }
+    if (success) { lastEntryFormats.set(entry.raceId, `${entry.format}_${entry.category}`); lastEntryLevels.set(entry.raceId, entry.level); focusId = entry.id; $<HTMLDialogElement>('entry-dialog').close(); render(); toast('Participant enregistré.'); }
   }
   function undo(): void {
     const last = state.history.at(-1); if (!last) return;
@@ -450,11 +467,11 @@ namespace PaceApp {
     $('photo-event').textContent = race.title;
     $('photo-date').textContent = new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, first => first.toLocaleUpperCase('fr-FR'));
     $('photo-screen').dataset.template = state.settings.photoTemplate;
-    $('photo-category').textContent = Pace.formatLabel(e);
-    const rank = Pace.rankingFor(state.session, Pace.formatKey(e), race.date).find(r => r.entry.id === e.id)?.rank;
+    $('photo-category').textContent = Pace.groupLabel(e.level, Pace.formatLabel(e));
+    const rank = Pace.rankingFor(state.session, Pace.formatKey(e), race.date, e.level).find(r => r.entry.id === e.id)?.rank;
     const finalResults = Pace.eventResultsFinal(state.session, race);
     $('photo-rank').hidden = !finalResults || !rank;
-    $('photo-rank').textContent = finalResults && rank ? `${rank === 1 ? '1er' : `${rank}e`} · ${Pace.formatLabel(e)}` : '';
+    $('photo-rank').textContent = finalResults && rank ? `${rank === 1 ? '1er' : `${rank}e`} · ${Pace.groupLabel(e.level, Pace.formatLabel(e))}` : '';
     $('photo-names').innerHTML = `${esc(e.name1)}${e.format === 'DUO' ? `<span>&</span>${esc(e.name2)}` : ''}`;
     $('photo-time').textContent = clock(e.durationMs!);
   }
@@ -479,32 +496,33 @@ namespace PaceApp {
   }
   function openPodiumChooser(): void {
     const race = currentRace(); if (!race || !Pace.eventResultsFinal(state.session, race)) return;
-    if (activeFormat !== 'all') { openPodium(race.id, activeFormat); return; }
-    const formats = formatOptions.filter(option => Pace.eventRankingFormats(race, raceEntries()).includes(option.key));
+    if (activeFormat !== 'all' && (!race.levels.length || activeLevel)) { openPodium(race.id, activeFormat, activeLevel); return; }
+    const groups = Pace.eventRankingGroups(race, raceEntries()).filter(g => (!activeLevel || g.level === activeLevel) && (activeFormat === 'all' || g.format === activeFormat));
     $('podium-choice-context').textContent = `${race.title} · ${raceLabel(race)}`;
-    $('podium-choice-buttons').innerHTML = formats.map(option => {
-      const count = Pace.rankingFor(state.session, option.key, race.date).length;
-      return `<button class="button" data-action="podium" data-format="${option.key}" data-race-id="${esc(race.id)}"${!count ? ' disabled' : ''}>${option.label}<small>${count ? `${count} résultat${count > 1 ? 's' : ''}` : 'Aucun résultat'}</small></button>`;
+    $('podium-choice-buttons').innerHTML = groups.map(g => {
+      const count = Pace.rankingFor(state.session, g.format, race.date, g.level).length;
+      return `<button class="button" data-action="podium" data-format="${g.format}" data-level="${esc(g.level)}" data-race-id="${esc(race.id)}"${!count ? ' disabled' : ''}>${esc(Pace.groupLabel(g.level, formatName(g.format)))}<small>${count ? `${count} résultat${count > 1 ? 's' : ''}` : 'Aucun résultat'}</small></button>`;
     }).join('');
     $<HTMLDialogElement>('podium-choice-dialog').showModal();
   }
-  function openPodium(raceId: string, format: Pace.RankingFormat): void {
+  function formatName(format: Pace.RankingFormat): string { return formatOptions.find(option => option.key === format)!.label; }
+  function openPodium(raceId: string, format: Pace.RankingFormat, level = ''): void {
     try {
       const race = state.session.races.find(r => r.id === raceId); if (!race) throw Error('Événement introuvable.');
-      if (!Pace.podiumFor(state.session, race, format).length) throw Error('Aucun résultat classé pour cette catégorie.');
+      if (!Pace.podiumFor(state.session, race, format, level).length) throw Error('Aucun résultat classé pour cette catégorie.');
       $<HTMLDialogElement>('podium-choice-dialog').close();
-      podiumSelection = { raceId, format }; renderFullPodium(); openPresentation('podium-screen');
+      podiumSelection = { raceId, format, level }; renderFullPodium(); openPresentation('podium-screen');
     } catch (error) { toast(error instanceof Error ? error.message : 'Podium indisponible.', true); }
   }
   function renderFullPodium(): void {
     if (!podiumSelection) return;
     const race = state.session.races.find(r => r.id === podiumSelection!.raceId);
     if (!race || !Pace.eventResultsFinal(state.session, race)) { closePresentation(); return; }
-    const places = Pace.podiumFor(state.session, race, podiumSelection.format);
+    const places = Pace.podiumFor(state.session, race, podiumSelection.format, podiumSelection.level);
     if (!places.length) { closePresentation(); return; }
     $('podium-event').textContent = race.title;
     $('podium-date').textContent = new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, first => first.toLocaleUpperCase('fr-FR'));
-    $('podium-category').textContent = formatOptions.find(option => option.key === podiumSelection!.format)!.label;
+    $('podium-category').textContent = Pace.groupLabel(podiumSelection.level, formatName(podiumSelection.format));
     $('podium-stage').innerHTML = [2, 1, 3].map(rank => {
       const entries = places.find(place => place.rank === rank)?.entries ?? [];
       return `<article class="podium-stage-card stage-${rank}${entries.length ? '' : ' is-empty'}">${entries.length ? podiumAwardMarkup(rank) + entries.map(entry => `<div class="podium-stage-winner"><div class="podium-stage-names"><span>${esc(entry.name1)}</span>${entry.format === 'DUO' ? `<span class="podium-stage-join">&amp;</span><span>${esc(entry.name2)}</span>` : ''}</div><div class="podium-stage-time">${clock(entry.durationMs!)}</div></div>`).join('') : '<div class="podium-stage-rank">—</div><p>Place non attribuée</p>'}</article>`;
@@ -574,7 +592,9 @@ namespace PaceApp {
   }
   function templateRows(race: Pace.Race): string[][] {
     const rows = [['Solo H', 'Alex Martin', '', '09:00'], ['Solo F', 'Manon Simon', '', '09:05'], ['Duo HH', 'Hugo Robert', 'Tom Garcia', '09:10'], ['Duo FF', 'Emma Durand', 'Léa Moreau', '09:15'], ['Duo HF', 'Lucas Petit', 'Zoé Bernard', '09:20']];
-    return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ'], ...rows.filter(row => race.format === 'MIXED' || row[0]!.startsWith(race.format === 'DUO' ? 'Duo' : 'Solo'))];
+    const kept = rows.filter(row => race.format === 'MIXED' || row[0]!.startsWith(race.format === 'DUO' ? 'Duo' : 'Solo'));
+    if (!race.levels.length) return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ'], ...kept];
+    return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Niveau'], ...kept.map((row, i) => [...row, i % 2 ? 'Open' : 'Pro'])];
   }
   // Modèle CSV pour Excel en français : séparateur « ; », accents conservés.
   function exportCsvTemplate(): void {
@@ -587,20 +607,21 @@ namespace PaceApp {
       const rows: (string | number | null)[][] = template
         ? templateRows(race)
         : [['Rang dans le format', 'Événement', 'Date', 'Participant 1', 'H/F participant 1', 'Participant 2', 'H/F participant 2', 'Format', 'Catégorie', 'Heure de départ', 'Heure d’arrivée', 'Arrivée le lendemain', 'Temps total', 'Statut', 'Classement']];
-      const ranked = view === 'results' ? resultRanking() : formatOptions.flatMap(option => Pace.rankingFor(state.session, option.key, race.date)), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
+      if (!template && race.levels.length) rows[0]!.push('Niveau');
+      const ranked = view === 'results' ? resultRanking() : Pace.eventRankingGroups(race, raceEntries()).flatMap(g => Pace.rankingFor(state.session, g.format, race.date, g.level)), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
       if (!template) for (const e of view === 'results' ? ranked.map(r => r.entry) : raceEntries()) {
         const r = state.session.races.find(item => item.id === e.raceId)!;
-        rows.push([ranks.get(e.id) ?? '', r.title, r.date, e.name1, e.gender1, e.name2, e.gender2, e.format, e.category, departureText(e), e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt), e.arrivedAt !== null && e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? 'Oui' : '', e.durationMs === null ? '' : clock(e.durationMs), Pace.statusLabel(e), Pace.eventResultsFinal(state.session, r) ? 'Définitif' : 'Provisoire']);
+        rows.push([ranks.get(e.id) ?? '', r.title, r.date, e.name1, e.gender1, e.name2, e.gender2, e.format, e.category, departureText(e), e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt), e.arrivedAt !== null && e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? 'Oui' : '', e.durationMs === null ? '' : clock(e.durationMs), Pace.statusLabel(e), Pace.eventResultsFinal(state.session, r) ? 'Définitif' : 'Provisoire', ...(race.levels.length ? [e.level] : [])]);
       }
       const book = XLSX.utils.book_new(), sheet = XLSX.utils.aoa_to_sheet(rows);
-      sheet['!cols'] = (template ? [18, 26, 26, 21] : [10, 32, 16, 26, 19, 26, 19, 12, 12, 21, 21, 24, 16, 20, 16]).map(wch => ({ wch }));
+      sheet['!cols'] = (template ? [18, 26, 26, 21, 12] : [10, 32, 16, 26, 19, 26, 19, 12, 12, 21, 21, 24, 16, 20, 16]).map(wch => ({ wch }));
       XLSX.utils.book_append_sheet(book, sheet, 'Participants'); XLSX.writeFile(book, template ? 'soundcrossing-modele.xlsx' : `pace-resultats-${race.date}.xlsx`);
     } catch { toast('Export Excel impossible. Exportez une sauvegarde de la session.', true); }
   }
   async function readImport(file: File): Promise<void> {
     try {
       const race = currentRace(); if (!race) throw Error('Créez d’abord une course.'); importRaceId = race.id;
-      $('import-course').textContent = `Ajouter à « ${race.title} » (${raceLabel(race)}). Formats acceptés : ${race.format === 'DUO' ? 'Duo HH/FF/HF' : race.format === 'SOLO' ? 'Solo H/F' : 'Solo H/F et Duo HH/FF/HF'}. Première ligne du fichier : noms des colonnes.`;
+      $('import-course').textContent = `Ajouter à « ${race.title} » (${raceLabel(race)}). Formats acceptés : ${race.format === 'DUO' ? 'Duo HH/FF/HF' : race.format === 'SOLO' ? 'Solo H/F' : 'Solo H/F et Duo HH/FF/HF'}.${race.levels.length ? ' Colonne Niveau : Pro ou Open.' : ''} Première ligne du fichier : noms des colonnes.`;
       if (file.size > 10 * 1024 * 1024) throw Error('Fichier trop volumineux (maximum 10 Mo).');
       if (!/\.(xlsx|xls|csv|tsv)$/i.test(file.name)) throw Error('Choisissez un fichier Excel, CSV ou TSV.');
       const buffer = await file.arrayBuffer();
@@ -629,7 +650,7 @@ namespace PaceApp {
     } catch (error) { sourceRows = []; preview = []; $('import-mapping').innerHTML = ''; $('import-preview').innerHTML = ''; $('import-summary').textContent = error instanceof Error ? error.message : 'Feuille illisible.'; $('import-summary').classList.add('error'); $<HTMLButtonElement>('confirm-import').disabled = true; }
   }
   function refreshImport(): void {
-    const mapping: Record<Pace.ImportField, number> = { bib: -1, name1: -1, name2: -1, format: -1, category: -1, scheduled: -1, duration: -1 };
+    const mapping: Record<Pace.ImportField, number> = { bib: -1, name1: -1, name2: -1, format: -1, category: -1, level: -1, scheduled: -1, duration: -1 };
     for (const field of fields) mapping[field.key] = Number(document.querySelector<HTMLSelectElement>(`[data-map="${field.key}"]`)!.value);
     const selected = Object.values(mapping).filter(n => n >= 0);
     const duplicateMapping = new Set(selected).size !== selected.length;
@@ -641,7 +662,7 @@ namespace PaceApp {
     $('import-summary').textContent = duplicateMapping ? 'Une même colonne est utilisée plusieurs fois. Corrigez les correspondances.' : exceeds ? 'L’import dépasserait 3 000 départs.' : `${valid} ligne${valid > 1 ? 's' : ''} à ajouter · ${duplicates} doublon${duplicates > 1 ? 's' : ''} ignoré${duplicates > 1 ? 's' : ''} · ${errors} erreur${errors > 1 ? 's' : ''}${errors ? '. Corrigez le fichier avant de poursuivre.' : ''}`;
     $('import-summary').classList.toggle('error', errors > 0 || duplicateMapping || exceeds);
     $<HTMLButtonElement>('confirm-import').disabled = !valid || errors > 0 || duplicateMapping || exceeds;
-    $('import-preview').innerHTML = `<table><thead><tr><th>Ligne</th><th>Participant / équipe</th><th>Format</th><th>Vérification</th></tr></thead><tbody>${preview.slice(0, 100).map(r => `<tr><td>${r.line}</td><td>${r.entry ? esc(label(r.entry)) : '—'}</td><td>${r.entry ? esc(Pace.formatLabel(r.entry)) : '—'}</td><td class="${r.error ? 'error' : ''}">${esc(r.error || (r.duplicate ? 'Doublon ignoré' : 'Prêt à ajouter'))}</td></tr>`).join('')}</tbody></table>${preview.length > 100 ? '<p class="modal-note">Aperçu des 100 premières lignes. Toutes les lignes sont vérifiées.</p>' : ''}`;
+    $('import-preview').innerHTML = `<table><thead><tr><th>Ligne</th><th>Participant / équipe</th><th>Format</th><th>Vérification</th></tr></thead><tbody>${preview.slice(0, 100).map(r => `<tr><td>${r.line}</td><td>${r.entry ? esc(label(r.entry)) : '—'}</td><td>${r.entry ? esc(Pace.groupLabel(r.entry.level, Pace.formatLabel(r.entry))) : '—'}</td><td class="${r.error ? 'error' : ''}">${esc(r.error || (r.duplicate ? 'Doublon ignoré' : 'Prêt à ajouter'))}</td></tr>`).join('')}</tbody></table>${preview.length > 100 ? '<p class="modal-note">Aperçu des 100 premières lignes. Toutes les lignes sont vérifiées.</p>' : ''}`;
   }
   async function restore(file: File): Promise<void> {
     try {
@@ -678,12 +699,13 @@ namespace PaceApp {
     else if (action === 'edit') openEntry(id);
     else if (action === 'photo') openPhoto(id);
     else if (action === 'result') openResult(id);
-    else if (action === 'podium') openPodium(button.dataset.raceId ?? '', button.dataset.format as Pace.RankingFormat);
+    else if (action === 'podium') openPodium(button.dataset.raceId ?? '', button.dataset.format as Pace.RankingFormat, button.dataset.level ?? '');
   }
   document.addEventListener('click', handleAction);
   document.querySelectorAll<HTMLButtonElement>('.close-modal').forEach(b => b.addEventListener('click', () => b.closest('dialog')?.close()));
   document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.addEventListener('click', () => { view = b.dataset.view as typeof view; render(); }));
   $('pending-filter').addEventListener('click', () => { view = view === 'live' ? 'participants' : 'live'; render(); });
+  $('level-chips').addEventListener('click', event => { const button = (event.target as Element).closest<HTMLButtonElement>('[data-level-filter]'); if (button) { activeLevel = button.dataset.levelFilter ?? ''; render(); } });
   $('format-chips').addEventListener('click', event => { const button = (event.target as Element).closest<HTMLButtonElement>('[data-filter]'); if (button) { activeFormat = button.dataset.filter as typeof activeFormat; render(); } });
   ['empty-add', 'list-add'].forEach(id => $(id).addEventListener('click', () => openEntry()));
   $('new-race-button').addEventListener('click', () => openRace());
@@ -718,6 +740,7 @@ namespace PaceApp {
     if (button.dataset.person === '1') selectedGender1 = button.dataset.gender as Pace.Gender; else selectedGender2 = button.dataset.gender as Pace.Gender;
     $('entry-error').textContent = ''; syncGenderFields();
   }));
+  document.querySelectorAll<HTMLButtonElement>('[data-entry-level]').forEach(button => button.addEventListener('click', () => { selectedLevel = button.dataset.entryLevel ?? ''; $('entry-error').textContent = ''; syncGenderFields(); }));
   document.querySelectorAll<HTMLButtonElement>('[data-entry-format]').forEach(button => button.addEventListener('click', () => {
     const format = button.dataset.entryFormat as Pace.Format;
     if (selectedEntryFormat !== format) chooseEntryFormat(format);
