@@ -210,13 +210,14 @@ namespace Wod {
   function inputsFor(w: Workout, a: Athlete): string {
     const s = state.scores[w.id]?.[a.id];
     if (s?.forfeit) return `<span class="outcome-badge">Forfait</span>`;
-    const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric'): string =>
-      `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
+    const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric', off = false): string =>
+      `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}"${off ? ' disabled' : ''}>`;
     if (w.type === 'time') {
       // Temps du chrono (durée, pas une heure) : mm:ss si le cap fait moins d’une heure, sinon hh:mm:ss.
       const short = shortTime(w);
-      const time = Saisie.box(`data-score="${a.id}" data-field="time"`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short);
-      return `<div class="score-inputs">${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}</div>`;
+      // Soit un temps (fini), soit des reps (stoppé au cap) : la case remplie grise l’autre.
+      const time = Saisie.box(`data-score="${a.id}" data-field="time"${s?.reps !== undefined ? ' disabled' : ''}`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short);
+      return `<div class="score-inputs">${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites', 'numeric', s?.timeMs !== undefined)}</div>`;
     }
     if (w.type === 'load') return `<div class="score-inputs">${field('kg', s?.kg, 'Kg', 'decimal')}<span>kg</span></div>`;
     if (w.type === 'amrap' && w.repsPerRound) {
@@ -528,6 +529,11 @@ namespace Wod {
       else if (d.scoreLevel !== undefined && t.closest('#chips2')) { scoreLevel = d.scoreLevel; scoreGroup = 'all'; render(); }
       else if (d.rankLevel) { rankingLevel = d.rankLevel; render(); }
       else if (d.level !== undefined && t.closest('#entry-form')) { entryLevel = d.level; $('entry-error').textContent = ''; syncEntryForm(); }
+    });
+    $('table-body').addEventListener('input', e => {
+      const i = e.target as HTMLInputElement, other = { time: 'reps', reps: 'time' }[i.dataset.field ?? ''];
+      const box = other ? i.closest('tr')?.querySelector<HTMLInputElement>(`[data-field="${other}"]`) : null;
+      if (box) box.disabled = i.value.trim() !== '';
     });
     $('table-body').addEventListener('change', e => { const i = e.target as HTMLInputElement; if (i.dataset.score) saveScore(i); });
     $('table-body').addEventListener('keydown', e => {
