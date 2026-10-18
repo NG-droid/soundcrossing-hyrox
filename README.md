@@ -36,7 +36,7 @@ Clé de stockage conservée : `pace.hyrox.session.v1` ; copie de récupération 
 
 Dates/heures dans le fuseau local de l’ordinateur. Arrivée après minuit explicite, durée positive et au plus 48 h ; heures inexistantes lors du changement d’heure refusées. Une date comportant des départs enregistrés ne peut pas être déplacée : créer un autre événement.
 
-Le serveur n’écoute que sur `127.0.0.1` et sert une liste explicite de ressources publiques ; les sauvegardes, sources et dossiers internes ne sont pas accessibles par HTTP. `/data` lit et écrit uniquement la copie disque de la session ; l’écriture exige l’hôte `127.0.0.1:8767`, l’origine de l’application et un corps JSON. Les données ne sont pas envoyées à un service distant. Logo : [origine](assets/ORIGINE.md).
+Le serveur n’écoute que sur `127.0.0.1` et sert une liste explicite de ressources publiques ; les sauvegardes, sources et dossiers internes ne sont pas accessibles par HTTP. `/data` (Hyrox) et `/data/wod` (WOD) lisent et écrivent uniquement les copies disque `session.json` et `wod.json` ; une écriture à la fois, et une version plus ancienne que celle du disque est refusée (409) ; l’écriture exige l’hôte `127.0.0.1:8767`, l’origine de l’application et un corps JSON. Les données ne sont pas envoyées à un service distant. Logo : [origine](assets/ORIGINE.md).
 
 ## Développement / reprise
 

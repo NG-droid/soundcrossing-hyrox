@@ -77,6 +77,7 @@ namespace PaceApp {
         const body = diskPending; diskPending = null;
         try {
           const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+          if (response.status === 409) { toast('Une session plus récente est enregistrée sur le disque (autre navigateur). Rechargez la page.', true); continue; }
           if (!response.ok) throw Error();
           diskWarned = false;
         } catch {

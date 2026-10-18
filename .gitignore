@@ -10,3 +10,9 @@ livraison/
 !.env.example
 *.log
 runtime/
+
+# Sauvegardes personnelles et restes de mise à jour
+pace-session-*.json
+sauvegarde-wod-*.json
+maj-precedente/
+*.maj

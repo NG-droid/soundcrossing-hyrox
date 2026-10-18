@@ -22,6 +22,8 @@ jobs:
           python-version: "3.13"
       - run: npm ci
       - run: npm test
+      - name: Tests du serveur (port et données temporaires)
+        run: python -m unittest tests/test_server_data.py
       - run: npm run pack-windows
       - run: echo "$GITHUB_SHA" > livraison/VERSION.txt
       - uses: actions/upload-artifact@v4

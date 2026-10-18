@@ -23,7 +23,8 @@ namespace Wod {
     scores: Record<string, Record<string, Score>>;
   }
   // Comme dans l’app Hyrox : plusieurs événements, chacun avec son format Solo, Duo ou Solo + Duo.
-  export interface Store { version: 2; events: Competition[]; selectedId: string; }
+  // revision et savedAt : comme dans l’app Hyrox, pour repérer une écriture plus récente faite ailleurs.
+  export interface Store { version: 2; events: Competition[]; selectedId: string; revision?: string; savedAt?: number; }
   export interface Placed { athlete: Athlete; rank: number; score: Score; }
   export interface GeneralRow { athlete: Athlete; rank: number; total: number; places: Record<string, number | null>; }
 
@@ -226,35 +227,94 @@ namespace Wod {
     return String(max + 1).padStart(3, '0');
   }
 
+  // Vérifie chaque participant, WOD et score : une sauvegarde abîmée est refusée avant de remplacer quoi que ce soit.
+  const isText = (x: unknown): x is string => typeof x === 'string';
+  const positive = (x: unknown, what: string): number | null => {
+    if (x === null || x === undefined || x === '') return null;
+    if (typeof x !== 'number' || !Number.isFinite(x) || x <= 0) throw Error(`${what} invalide.`);
+    return x;
+  };
+  function validateAthlete(value: unknown, levels: string[], line: number): Athlete {
+    const a = value as Partial<Athlete> | null;
+    const where = `Participant n° ${line}`;
+    if (!a || typeof a !== 'object') throw Error(`${where} illisible.`);
+    if (!isText(a.id) || !a.id) throw Error(`${where} sans identifiant.`);
+    if (a.format !== 'SOLO' && a.format !== 'DUO') throw Error(`${where} : format inconnu.`);
+    if (!isText(a.name1) || !a.name1.trim()) throw Error(`${where} : nom manquant.`);
+    if (a.gender1 !== 'H' && a.gender1 !== 'F') throw Error(`${where} : H ou F manquant.`);
+    const duo = a.format === 'DUO';
+    const name2 = isText(a.name2) ? a.name2 : '';
+    if (duo && (!name2.trim() || (a.gender2 !== 'H' && a.gender2 !== 'F'))) throw Error(`${where} : partenaire du duo incomplet.`);
+    const athlete: Athlete = { id: a.id, bib: isText(a.bib) ? a.bib : '', format: a.format, name1: a.name1, name2: duo ? name2 : '', gender1: a.gender1, gender2: duo ? a.gender2 as 'H' | 'F' : '' };
+    if (levels.length) {
+      const level = remapLevel(isText(a.level) ? a.level : undefined, levels);
+      if (level) athlete.level = level;
+    }
+    return athlete;
+  }
+  function validateWorkout(value: unknown, line: number): Workout {
+    const w = value as Partial<Workout> | null;
+    const where = `WOD n° ${line}`;
+    if (!w || typeof w !== 'object') throw Error(`${where} illisible.`);
+    if (!isText(w.id) || !w.id) throw Error(`${where} sans identifiant.`);
+    if (!w.type || !(w.type in TYPE_LABELS)) throw Error(`${where} : type de classement inconnu.`);
+    return { id: w.id, name: isText(w.name) && w.name.trim() ? w.name : `WOD ${line}`, description: isText(w.description) ? w.description : '', type: w.type,
+      capMinutes: positive(w.capMinutes, `${where} : time cap`), totalReps: positive(w.totalReps, `${where} : reps au total`), repsPerRound: positive(w.repsPerRound, `${where} : reps par tour`) };
+  }
+  function validateScore(value: unknown): Score {
+    const s = value as Record<string, unknown> | null;
+    if (!s || typeof s !== 'object') throw Error('Score illisible.');
+    const score: Score = {};
+    for (const key of ['timeMs', 'reps', 'kg'] as const) {
+      const x = s[key];
+      if (x === undefined) continue;
+      if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) throw Error('Score invalide.');
+      score[key] = x;
+    }
+    return score;
+  }
+
   export function validate(value: unknown): Competition {
     const v = value as Partial<Competition> | null;
-    if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null)
+    if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null || Array.isArray(v.scores))
       throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
     const format: EventFormat = v.format === 'SOLO' || v.format === 'DUO' ? v.format : 'MIXED';
     // Niveaux toujours dans l’ordre Scaled puis RX. Anciens événements en Pro / Open : Pro → RX, Open → Scaled.
-    let levels = Array.isArray(v.levels) ? v.levels.map(String) : [];
-    if (levels.length) {
-      for (const a of v.athletes as Athlete[]) { const level = remapLevel(a.level, LEVEL_PRESETS.rx!); if (level) a.level = level; }
-      levels = [...LEVEL_PRESETS.rx!];
+    const levels = Array.isArray(v.levels) && v.levels.length ? [...LEVEL_PRESETS.rx!] : [];
+    const athletes = v.athletes.map((a, i) => validateAthlete(a, levels, i + 1));
+    const workouts = v.workouts.map((w, i) => validateWorkout(w, i + 1));
+    const unique = (ids: string[], what: string): void => { if (new Set(ids).size !== ids.length) throw Error(`Deux ${what} ont le même identifiant : sauvegarde abîmée.`); };
+    unique(athletes.map(a => a.id), 'participants'); unique(workouts.map(w => w.id), 'WOD');
+    // Un score ne garde que les WOD et participants qui existent encore.
+    const athleteIds = new Set(athletes.map(a => a.id));
+    const scores: Record<string, Record<string, Score>> = {};
+    for (const w of workouts) {
+      const raw = (v.scores as Record<string, unknown>)[w.id];
+      if (raw === undefined) continue;
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error(`Scores du ${w.name} illisibles.`);
+      const list: Record<string, Score> = {};
+      for (const [id, s] of Object.entries(raw)) if (athleteIds.has(id)) list[id] = validateScore(s);
+      scores[w.id] = list;
     }
     return {
-      id: String(v.id || 'wod-1'), title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''), format,
+      id: isText(v.id) && v.id ? v.id : 'wod-1', title: isText(v.title) && v.title.trim() ? v.title : 'Compétition WOD', date: isText(v.date) ? v.date : '', format,
       method: v.method === 'points' ? 'points' : 'places',
-      levels,
-      athletes: v.athletes, workouts: v.workouts, scores: v.scores,
+      levels, athletes, workouts, scores,
     };
   }
 
   // Accepte aussi l’ancienne sauvegarde de la version test (une seule compétition).
   export function validateStore(value: unknown): Store {
     const v = value as Partial<Store> | null;
+    const meta = { revision: v && isText(v.revision) ? v.revision : '', savedAt: v && typeof v.savedAt === 'number' && Number.isFinite(v.savedAt) ? v.savedAt : 0 };
     if (v && typeof v === 'object' && Array.isArray(v.events)) {
       const events = v.events.map(validate);
+      if (new Set(events.map(e => e.id)).size !== events.length) throw Error('Deux événements ont le même identifiant : sauvegarde abîmée.');
       const selectedId = events.some(e => e.id === v.selectedId) ? String(v.selectedId) : events[0]?.id ?? '';
-      return { version: 2, events, selectedId };
+      return { version: 2, events, selectedId, ...meta };
     }
     const single = validate(value);
-    return { version: 2, events: [single], selectedId: single.id };
+    return { version: 2, events: [single], selectedId: single.id, ...meta };
   }
 
   export function exportRows(c: Competition): { name: string; rows: (string | number | null)[][] }[] {
