@@ -150,6 +150,7 @@ namespace Wod {
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
     (document.querySelector('.wod-table') as HTMLElement).classList.toggle('wod-ranking', view === 'ranking');
+    $('podium-footer').hidden = true;
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
   function setTable(head: string[], rows: string[], emptyText: string): void {
@@ -313,8 +314,13 @@ namespace Wod {
 
   // Rang comme dans l’Hyrox : pastille, la 1re place en rouge quand le classement est définitif.
   const rankBadge = (rank: number, final: boolean): string => `<span class="result-rank ${final ? `rank-${rank}` : 'provisional'}">${rank}</span>`;
-  const PODIUM_ICON = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
-  const podiumButton = (): string => `<button class="button primary" data-action="podium" title="Top 3 de cette catégorie en plein écran">${PODIUM_ICON}Podium</button>`;
+  // Bouton « Top 3 » en bas du tableau, noir, comme dans l’Hyrox.
+  function podiumFooter(ranked: number, pending: number): void {
+    $('podium-footer').hidden = false;
+    $('podium-footer-count').textContent = `${ranked} classé(s)${pending ? ` · ${pending} score(s) à saisir` : ''}`;
+    $('podium-footer-label').textContent = pending ? 'Top 3 provisoire' : 'Top 3 final';
+    $<HTMLButtonElement>('show-podium-button').disabled = !ranked;
+  }
   // Podium plein écran : même écran que l’Hyrox, pour l’onglet affiché (général ou un WOD) et la catégorie choisie.
   let podiumOpen = false;
   function openPodium(): void {
@@ -355,8 +361,9 @@ namespace Wod {
     const cat = rankingCat;
     if (rankingTab === 'general') {
       const pending = pendingScores(state, cat);
-      heading(pending ? 'Classement général provisoire' : 'Classement général définitif', `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${rulesText(state).slice(0, 3).join(' ')}`, podiumButton());
+      heading(pending ? 'Classement général provisoire' : 'Classement général définitif', `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${rulesText(state).slice(0, 3).join(' ')}`);
       const cell = (w: Workout, r: GeneralRow): string => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${STATUS_LABELS[scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
+      podiumFooter(generalRanking(state, cat).length, pending);
       const rows = generalRanking(state, cat).map(r =>
         `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? group(r.athlete) : categoryLabel(category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
       setTable(['RANG', 'PARTICIPANT', ...state.workouts.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS'], rows, 'Aucun participant dans cette catégorie.');
@@ -365,8 +372,9 @@ namespace Wod {
     const w = state.workouts.find(x => x.id === rankingTab) as Workout;
     const inCat = state.athletes.filter(a => group(a) === cat);
     const todo = inCat.filter(a => scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length;
-    heading(w.name, `${TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`, podiumButton());
+    heading(w.name, `${TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
     const label = (a: Athlete): string => `<strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(a.level ? group(a) : categoryLabel(category(a)))}</div>`;
+    podiumFooter(workoutRanking(state, w, cat).length, todo);
     const rows = workoutRanking(state, w, cat).map(p =>
       `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${pointsFor(p.rank)} pts</td>` : ''}</tr>`);
     for (const a of inCat) if (state.scores[w.id]?.[a.id]?.forfeit)
