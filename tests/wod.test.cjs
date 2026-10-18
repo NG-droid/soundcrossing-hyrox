@@ -10,7 +10,7 @@ const ids = rows => Array.from(rows, r => `${r.athlete.id}:${r.rank}`);
 
 test('for time ranks finishers by time, then capped athletes by reps, and keeps ties', () => {
   const w = { id: 'w', name: 'Fran', description: '', type: 'time', capMinutes: 8, totalReps: 90, repsPerRound: null };
-  const c = { ...W.emptyCompetition('2026-10-17'), athletes: ['a', 'b', 'c', 'd', 'e'].map(id => athlete(id)), workouts: [w],
+  const c = { ...W.emptyCompetition('c', 'Test', '2026-10-17', 'MIXED'), athletes: ['a', 'b', 'c', 'd', 'e'].map(id => athlete(id)), workouts: [w],
     scores: { w: { a: { reps: 70 }, b: { timeMs: 300000 }, c: { reps: 80 }, d: { timeMs: 250000 }, e: { timeMs: 300000 } } } };
   assert.deepEqual(ids(W.workoutRanking(c, w, 'H')), ['d:1', 'b:2', 'e:2', 'c:4', 'a:5']);
   assert.equal(W.scoreText(w, { reps: 70 }), 'CAP + 70 reps');
@@ -18,7 +18,7 @@ test('for time ranks finishers by time, then capped athletes by reps, and keeps 
 
 test('amrap, load and reps rank the biggest number first', () => {
   const amrap = { id: 'w', name: 'Cindy', description: '', type: 'amrap', capMinutes: 20, totalReps: null, repsPerRound: 30 };
-  const c = { ...W.emptyCompetition(''), athletes: [athlete('a'), athlete('b')], workouts: [amrap], scores: { w: { a: { reps: 152 }, b: { reps: 160 } } } };
+  const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b')], workouts: [amrap], scores: { w: { a: { reps: 152 }, b: { reps: 160 } } } };
   assert.deepEqual(ids(W.workoutRanking(c, amrap, 'H')), ['b:1', 'a:2']);
   assert.equal(W.scoreText(amrap, { reps: 152 }), '5 tours + 2 reps');
 });
@@ -26,7 +26,7 @@ test('amrap, load and reps rank the biggest number first', () => {
 test('general ranking adds places, missing scores take the last place, and points mode reverses the order', () => {
   const t = { id: 't', name: 'T', description: '', type: 'time', capMinutes: null, totalReps: null, repsPerRound: null };
   const l = { id: 'l', name: 'L', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null };
-  const c = { ...W.emptyCompetition(''), athletes: [athlete('a'), athlete('b'), athlete('c'), athlete('f', 'F')], workouts: [t, l],
+  const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b'), athlete('c'), athlete('f', 'F')], workouts: [t, l],
     scores: { t: { a: { timeMs: 100 }, b: { timeMs: 200 }, c: { timeMs: 300 } }, l: { a: { kg: 80 }, b: { kg: 100 } } } };
   const general = W.generalRanking(c, 'H');
   assert.deepEqual(Array.from(general, r => `${r.athlete.id}:${r.rank}:${r.total}`), ['a:1:3', 'b:1:3', 'c:3:6']);
@@ -48,4 +48,15 @@ test('the demo exports one general sheet plus one sheet per WOD', () => {
   const sheets = W.exportRows(W.demo('2026-10-17'));
   assert.deepEqual(Array.from(sheets, s => s.name), ['Général', '1. WOD 1 — Fran', '2. WOD 2 — Cindy', '3. WOD 3 — Clean max']);
   assert.equal(sheets[0].rows.length, 11);
+});
+
+test('an old single-competition backup becomes one Solo + Duo event', () => {
+  const store = W.validateStore({ title: 'Ancien', date: '2026-10-17', method: 'points', athletes: [], workouts: [], scores: {} });
+  assert.equal(store.events.length, 1);
+  assert.equal(store.events[0].format, 'MIXED');
+  assert.equal(store.events[0].method, 'points');
+  assert.equal(store.selectedId, store.events[0].id);
+  const two = W.validateStore({ version: 2, events: [W.emptyCompetition('a', 'A', '', 'SOLO'), W.emptyCompetition('b', 'B', '', 'DUO')], selectedId: 'b' });
+  assert.equal(two.selectedId, 'b');
+  assert.throws(() => W.validateStore({ nope: true }), /sauvegarde WOD/);
 });

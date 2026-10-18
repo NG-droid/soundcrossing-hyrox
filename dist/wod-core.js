@@ -9,10 +9,14 @@ var Wod;
         reps: 'Max reps / calories / mètres',
     };
     Wod.CATEGORIES = ['H', 'F', 'HH', 'FF', 'HF'];
-    function emptyCompetition(date) {
-        return { title: 'Ma compétition WOD', date, method: 'places', athletes: [], workouts: [], scores: {} };
+    function emptyCompetition(id, title, date, format) {
+        return { id, title, date, format, method: 'places', athletes: [], workouts: [], scores: {} };
     }
     Wod.emptyCompetition = emptyCompetition;
+    function eventFormatLabel(format) { return format === 'MIXED' ? 'Solo + Duo' : format === 'DUO' ? 'Duo' : 'Solo'; }
+    Wod.eventFormatLabel = eventFormatLabel;
+    function emptyStore() { return { version: 2, events: [], selectedId: '' }; }
+    Wod.emptyStore = emptyStore;
     function category(a) {
         if (a.format === 'SOLO')
             return a.gender1;
@@ -140,13 +144,26 @@ var Wod;
         const v = value;
         if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null)
             throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
+        const format = v.format === 'SOLO' || v.format === 'DUO' ? v.format : 'MIXED';
         return {
-            title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''),
+            id: String(v.id || 'wod-1'), title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''), format,
             method: v.method === 'points' ? 'points' : 'places',
             athletes: v.athletes, workouts: v.workouts, scores: v.scores,
         };
     }
     Wod.validate = validate;
+    // Accepte aussi l’ancienne sauvegarde de la version test (une seule compétition).
+    function validateStore(value) {
+        const v = value;
+        if (v && typeof v === 'object' && Array.isArray(v.events)) {
+            const events = v.events.map(validate);
+            const selectedId = events.some(e => e.id === v.selectedId) ? String(v.selectedId) : events[0]?.id ?? '';
+            return { version: 2, events, selectedId };
+        }
+        const single = validate(value);
+        return { version: 2, events: [single], selectedId: single.id };
+    }
+    Wod.validateStore = validateStore;
     function exportRows(c) {
         const sheets = [];
         const general = [['Catégorie', 'Rang', 'Dossard', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
@@ -187,7 +204,7 @@ var Wod;
             scores.w2[a.id] = { reps: s2[i] };
             scores.w3[a.id] = { kg: s3[i] };
         });
-        return { title: 'Exemple — Soundcrossing WOD Challenge', date, method: 'places', athletes, workouts, scores };
+        return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', athletes, workouts, scores };
     }
     Wod.demo = demo;
 })(Wod || (Wod = {}));

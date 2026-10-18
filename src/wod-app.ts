@@ -7,19 +7,28 @@ namespace Wod {
   const today = (): string => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const uid = (): string => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : String(Date.now() + Math.random());
 
-  let state: Competition = emptyCompetition(today());
+  let store: Store = emptyStore();
+  // Événement affiché : toutes les vues travaillent dessus, comme l’événement choisi dans l’app Hyrox.
+  let state: Competition = emptyCompetition('', '', today(), 'MIXED');
+  function selectEvent(id: string): void {
+    const found = store.events.find(e => e.id === id) ?? store.events[0];
+    store.selectedId = found?.id ?? '';
+    state = found ?? emptyCompetition('', '', today(), 'MIXED');
+  }
+  const dateLabel = (date: string): string => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR') : 'sans date';
   let view: View = 'athletes';
   let selectedWod = '';
   let rankingTab = 'general';
   let rankingCat: Category | '' = '';
 
   function load(): void {
-    try { const raw = localStorage.getItem(KEY); if (raw) state = validate(JSON.parse(raw)); }
+    try { const raw = localStorage.getItem(KEY); if (raw) store = validateStore(JSON.parse(raw)); }
     catch { toast('Les données WOD enregistrées sont illisibles. Restaurez une sauvegarde.'); }
+    selectEvent(store.selectedId);
   }
   function save(): void {
     let error = false;
-    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    try { localStorage.setItem(KEY, JSON.stringify(store)); }
     catch { error = true; toast('Impossible d’enregistrer dans ce navigateur. Faites une sauvegarde fichier.'); }
     savedStatus(error);
   }
@@ -38,7 +47,15 @@ namespace Wod {
   }
 
   function render(): void {
+    const hasEvent = store.events.length > 0;
+    $('no-event').hidden = hasEvent; $('event-content').hidden = !hasEvent;
+    $('edit-competition').hidden = !hasEvent; $('event-format-badge').hidden = !hasEvent;
+    $('new-event-button').textContent = hasEvent ? '+ Nouvel événement' : '+ Créer un événement';
+    $('event-selector-panel').hidden = store.events.length < 2;
+    $('event-selector').innerHTML = store.events.map(e => `<option value="${esc(e.id)}"${e.id === store.selectedId ? ' selected' : ''}>${esc(e.title)} · ${esc(dateLabel(e.date))} · ${eventFormatLabel(e.format)}</option>`).join('');
+    if (!hasEvent) { $('title').textContent = 'Compétition WOD'; $('session-date').textContent = 'Créez un événement pour commencer.'; return; }
     $('title').textContent = state.title;
+    $('event-format-badge').textContent = `${eventFormatLabel(state.format)} · WOD`;
     $('session-date').textContent = state.date ? new Date(`${state.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Choisissez une date pour la compétition.';
     $('count-athletes').textContent = String(state.athletes.length);
     $('count-workouts').textContent = String(state.workouts.length);
@@ -51,7 +68,6 @@ namespace Wod {
     $('table-body').innerHTML = rows.join('');
     $('empty').hidden = rows.length > 0;
     $('empty-text').textContent = emptyText;
-    $('demo-button').hidden = state.athletes.length > 0 || state.workouts.length > 0;
     (document.querySelector('.wod-table') as HTMLElement).hidden = rows.length === 0;
   }
   function heading(title: string, description: string, actions = ''): void {
@@ -62,7 +78,8 @@ namespace Wod {
   }
 
   function renderAthletes(): void {
-    heading('Participants', 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.', '<button class="button primary" data-action="add-athlete">+ Ajouter un participant</button>');
+    const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
+    heading('Participants', help, `<button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
     const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a =>
       `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong></td><td>${categoryLabel(category(a))}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
     setTable(['DOSSARD', 'PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
@@ -182,10 +199,11 @@ namespace Wod {
   function openAthlete(a?: Athlete): void {
     const form = $<HTMLFormElement>('entry-form'); form.reset();
     const f = form.elements as unknown as Record<string, HTMLInputElement>;
-    $('entry-title').textContent = a ? 'Modifier l’inscription' : 'Ajouter un participant';
-    $('entry-course').textContent = `${state.title}${a ? ` · Dossard ${a.bib}` : ''}`;
+    $('entry-title').textContent = a ? 'Modifier l’inscription' : state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
+    $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${eventFormatLabel(state.format)}${a ? ` · Dossard ${a.bib}` : ''}`;
+    $('entry-format-choice').hidden = state.format !== 'MIXED';
     f.id!.value = a?.id ?? ''; f.name1!.value = a?.name1 ?? ''; f.name2!.value = a?.name2 ?? '';
-    entryFormat = a?.format ?? ''; gender1 = a?.gender1 ?? ''; gender2 = a?.gender2 ?? '';
+    entryFormat = a?.format ?? (state.format === 'MIXED' ? '' : state.format); gender1 = a?.gender1 ?? ''; gender2 = a?.gender2 ?? '';
     $('delete-entry').hidden = !a;
     $('entry-error').textContent = ''; syncEntryForm(); $<HTMLDialogElement>('entry-dialog').showModal();
   }
@@ -247,28 +265,50 @@ namespace Wod {
     save(); $<HTMLDialogElement>('workout-dialog').close(); render(); toast(i >= 0 ? 'WOD modifié.' : 'WOD ajouté.');
   }
 
-  function openCompetition(): void {
-    const f = $<HTMLFormElement>('competition-form').elements as unknown as Record<string, HTMLInputElement>;
-    f.title!.value = state.title; f.date!.value = state.date; ($<HTMLFormElement>('competition-form').elements.namedItem('method') as RadioNodeList).value = state.method;
-    $<HTMLDialogElement>('competition-dialog').showModal();
+  function openEvent(edit: boolean): void {
+    const form = $<HTMLFormElement>('session-form'); form.reset(); $('session-error').textContent = '';
+    const f = form.elements as unknown as Record<string, HTMLInputElement>;
+    const radio = (name: string): RadioNodeList => form.elements.namedItem(name) as RadioNodeList;
+    f.id!.value = edit ? state.id : ''; f.title!.value = edit ? state.title : 'Soundcrossing WOD'; f.date!.value = edit ? state.date : today();
+    radio('format').value = edit ? state.format : ''; radio('method').value = edit ? state.method : 'places';
+    $('event-dialog-title').textContent = edit ? 'Modifier l’événement' : 'Créer un événement';
+    $('save-event-button').textContent = edit ? 'Enregistrer' : 'Créer l’événement';
+    $('delete-event').hidden = !edit;
+    $<HTMLDialogElement>('session-dialog').showModal(); f.title!.focus();
   }
-  function submitCompetition(event: Event): void {
+  function submitEvent(event: Event): void {
     event.preventDefault();
     const data = new FormData(event.target as HTMLFormElement);
-    state.title = String(data.get('title') ?? '').trim() || state.title; state.date = String(data.get('date') ?? '');
-    state.method = data.get('method') === 'points' ? 'points' : 'places';
-    save(); $<HTMLDialogElement>('competition-dialog').close(); render();
+    const v = (k: string): string => String(data.get(k) ?? '').trim();
+    const format = v('format') as EventFormat;
+    if (!['SOLO', 'DUO', 'MIXED'].includes(format)) { $('session-error').textContent = 'Choisissez Solo, Duo ou Solo + Duo.'; return; }
+    const existing = store.events.find(e => e.id === v('id'));
+    if (existing && format !== 'MIXED' && existing.athletes.some(a => a.format !== format)) {
+      $('session-error').textContent = `Des inscriptions ${format === 'SOLO' ? 'Duo' : 'Solo'} existent déjà : gardez Solo + Duo ou supprimez-les d’abord.`; return;
+    }
+    const target = existing ?? emptyCompetition(uid(), '', '', format);
+    target.title = v('title') || 'Soundcrossing WOD'; target.date = v('date'); target.format = format;
+    target.method = v('method') === 'points' ? 'points' : 'places';
+    if (!existing) { store.events.push(target); view = 'athletes'; }
+    selectEvent(target.id); save(); $<HTMLDialogElement>('session-dialog').close(); render(); toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
+  }
+  function deleteEvent(): void {
+    if (!confirm(`Supprimer l’événement « ${state.title} », ses inscriptions, ses WOD et ses scores ?`)) return;
+    store.events = store.events.filter(e => e.id !== state.id);
+    selectEvent(''); save(); $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement supprimé.');
   }
 
   function exportExcel(): void {
+    if (!store.events.length) { toast('Créez d’abord un événement.'); return; }
     if (typeof XLSX === 'undefined') { toast('Export Excel indisponible.'); return; }
     const book = XLSX.utils.book_new();
     for (const sheet of exportRows(state)) XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(sheet.rows), sheet.name);
     XLSX.writeFile(book, `${state.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'wod'} - résultats.xlsx`);
   }
   function loadDemo(): void {
-    if ((state.athletes.length || state.workouts.length) && !confirm('L’exemple remplace la compétition actuelle. Continuer ?')) return;
-    state = demo(today()); save(); view = 'ranking'; rankingTab = 'general'; render();
+    const example = demo(today());
+    example.id = `exemple-${uid()}`;
+    store.events.push(example); selectEvent(example.id); save(); view = 'ranking'; rankingTab = 'general'; render();
     $<HTMLDialogElement>('settings-dialog').close(); toast('Exemple chargé : 10 inscrits et 3 WOD. Regardez chaque onglet.');
   }
 
@@ -304,23 +344,27 @@ namespace Wod {
     $('delete-entry').addEventListener('click', () => { const id = ($<HTMLFormElement>('entry-form').elements.namedItem('id') as HTMLInputElement).value; if (deleteAthlete(state.athletes.find(a => a.id === id))) $<HTMLDialogElement>('entry-dialog').close(); });
     $('workout-form').addEventListener('submit', submitWorkout);
     $('workout-form').addEventListener('change', syncWorkoutForm);
-    $('competition-form').addEventListener('submit', submitCompetition);
-    $('edit-competition').addEventListener('click', openCompetition);
+    $('session-form').addEventListener('submit', submitEvent);
+    $('edit-competition').addEventListener('click', () => openEvent(true));
+    $('new-event-button').addEventListener('click', () => openEvent(false));
+    $('no-event-create').addEventListener('click', () => openEvent(false));
+    $('delete-event').addEventListener('click', deleteEvent);
+    $('event-selector').addEventListener('change', () => { selectEvent($<HTMLSelectElement>('event-selector').value); save(); render(); });
     $('settings-button').addEventListener('click', () => $<HTMLDialogElement>('settings-dialog').showModal());
     $('export-button').addEventListener('click', exportExcel);
-    $('backup-button').addEventListener('click', () => download(`sauvegarde-wod-${state.date || today()}.json`, JSON.stringify(state, null, 2), 'application/json'));
+    $('backup-button').addEventListener('click', () => download(`sauvegarde-wod-${today()}.json`, JSON.stringify(store, null, 2), 'application/json'));
     $('restore-button').addEventListener('click', () => $('restore-file').click());
     $<HTMLInputElement>('restore-file').addEventListener('change', async e => {
       const file = (e.target as HTMLInputElement).files?.[0]; (e.target as HTMLInputElement).value = '';
       if (!file) return;
-      try { state = validate(JSON.parse(await file.text())); save(); render(); $<HTMLDialogElement>('settings-dialog').close(); toast('Sauvegarde restaurée.'); }
+      try { store = validateStore(JSON.parse(await file.text())); selectEvent(store.selectedId); save(); render(); $<HTMLDialogElement>('settings-dialog').close(); toast('Sauvegarde restaurée.'); }
       catch (error) { toast((error as Error).message); }
     });
-    $('demo-button').addEventListener('click', loadDemo);
+    $('no-event-demo').addEventListener('click', loadDemo);
     $('demo-settings').addEventListener('click', loadDemo);
     $('reset-button').addEventListener('click', () => {
-      if (!confirm('Effacer toute la compétition WOD (participants, WOD et scores) ?')) return;
-      state = emptyCompetition(today()); save(); view = 'athletes'; render(); $<HTMLDialogElement>('settings-dialog').close();
+      if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?')) return;
+      store = emptyStore(); selectEvent(''); save(); view = 'athletes'; render(); $<HTMLDialogElement>('settings-dialog').close();
     });
   }
 

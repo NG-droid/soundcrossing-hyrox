@@ -7,7 +7,15 @@ var Wod;
     const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     const uid = () => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : String(Date.now() + Math.random());
-    let state = Wod.emptyCompetition(today());
+    let store = Wod.emptyStore();
+    // Événement affiché : toutes les vues travaillent dessus, comme l’événement choisi dans l’app Hyrox.
+    let state = Wod.emptyCompetition('', '', today(), 'MIXED');
+    function selectEvent(id) {
+        const found = store.events.find(e => e.id === id) ?? store.events[0];
+        store.selectedId = found?.id ?? '';
+        state = found ?? Wod.emptyCompetition('', '', today(), 'MIXED');
+    }
+    const dateLabel = (date) => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR') : 'sans date';
     let view = 'athletes';
     let selectedWod = '';
     let rankingTab = 'general';
@@ -16,16 +24,17 @@ var Wod;
         try {
             const raw = localStorage.getItem(KEY);
             if (raw)
-                state = Wod.validate(JSON.parse(raw));
+                store = Wod.validateStore(JSON.parse(raw));
         }
         catch {
             toast('Les données WOD enregistrées sont illisibles. Restaurez une sauvegarde.');
         }
+        selectEvent(store.selectedId);
     }
     function save() {
         let error = false;
         try {
-            localStorage.setItem(KEY, JSON.stringify(state));
+            localStorage.setItem(KEY, JSON.stringify(store));
         }
         catch {
             error = true;
@@ -54,7 +63,21 @@ var Wod;
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
     function render() {
+        const hasEvent = store.events.length > 0;
+        $('no-event').hidden = hasEvent;
+        $('event-content').hidden = !hasEvent;
+        $('edit-competition').hidden = !hasEvent;
+        $('event-format-badge').hidden = !hasEvent;
+        $('new-event-button').textContent = hasEvent ? '+ Nouvel événement' : '+ Créer un événement';
+        $('event-selector-panel').hidden = store.events.length < 2;
+        $('event-selector').innerHTML = store.events.map(e => `<option value="${esc(e.id)}"${e.id === store.selectedId ? ' selected' : ''}>${esc(e.title)} · ${esc(dateLabel(e.date))} · ${Wod.eventFormatLabel(e.format)}</option>`).join('');
+        if (!hasEvent) {
+            $('title').textContent = 'Compétition WOD';
+            $('session-date').textContent = 'Créez un événement pour commencer.';
+            return;
+        }
         $('title').textContent = state.title;
+        $('event-format-badge').textContent = `${Wod.eventFormatLabel(state.format)} · WOD`;
         $('session-date').textContent = state.date ? new Date(`${state.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Choisissez une date pour la compétition.';
         $('count-athletes').textContent = String(state.athletes.length);
         $('count-workouts').textContent = String(state.workouts.length);
@@ -69,7 +92,6 @@ var Wod;
         $('table-body').innerHTML = rows.join('');
         $('empty').hidden = rows.length > 0;
         $('empty-text').textContent = emptyText;
-        $('demo-button').hidden = state.athletes.length > 0 || state.workouts.length > 0;
         document.querySelector('.wod-table').hidden = rows.length === 0;
     }
     function heading(title, description, actions = '') {
@@ -81,7 +103,8 @@ var Wod;
         $(target).innerHTML = items.map(i => `<button class="format-chip${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
     }
     function renderAthletes() {
-        heading('Participants', 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.', '<button class="button primary" data-action="add-athlete">+ Ajouter un participant</button>');
+        const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
+        heading('Participants', help, `<button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
         const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a => `<tr><td>${esc(a.bib)}</td><td><strong>${esc(Wod.athleteLabel(a))}</strong></td><td>${Wod.categoryLabel(Wod.category(a))}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
         setTable(['DOSSARD', 'PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
     }
@@ -230,12 +253,13 @@ var Wod;
         const form = $('entry-form');
         form.reset();
         const f = form.elements;
-        $('entry-title').textContent = a ? 'Modifier l’inscription' : 'Ajouter un participant';
-        $('entry-course').textContent = `${state.title}${a ? ` · Dossard ${a.bib}` : ''}`;
+        $('entry-title').textContent = a ? 'Modifier l’inscription' : state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
+        $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${Wod.eventFormatLabel(state.format)}${a ? ` · Dossard ${a.bib}` : ''}`;
+        $('entry-format-choice').hidden = state.format !== 'MIXED';
         f.id.value = a?.id ?? '';
         f.name1.value = a?.name1 ?? '';
         f.name2.value = a?.name2 ?? '';
-        entryFormat = a?.format ?? '';
+        entryFormat = a?.format ?? (state.format === 'MIXED' ? '' : state.format);
         gender1 = a?.gender1 ?? '';
         gender2 = a?.gender2 ?? '';
         $('delete-entry').hidden = !a;
@@ -330,24 +354,67 @@ var Wod;
         render();
         toast(i >= 0 ? 'WOD modifié.' : 'WOD ajouté.');
     }
-    function openCompetition() {
-        const f = $('competition-form').elements;
-        f.title.value = state.title;
-        f.date.value = state.date;
-        $('competition-form').elements.namedItem('method').value = state.method;
-        $('competition-dialog').showModal();
+    function openEvent(edit) {
+        const form = $('session-form');
+        form.reset();
+        $('session-error').textContent = '';
+        const f = form.elements;
+        const radio = (name) => form.elements.namedItem(name);
+        f.id.value = edit ? state.id : '';
+        f.title.value = edit ? state.title : 'Soundcrossing WOD';
+        f.date.value = edit ? state.date : today();
+        radio('format').value = edit ? state.format : '';
+        radio('method').value = edit ? state.method : 'places';
+        $('event-dialog-title').textContent = edit ? 'Modifier l’événement' : 'Créer un événement';
+        $('save-event-button').textContent = edit ? 'Enregistrer' : 'Créer l’événement';
+        $('delete-event').hidden = !edit;
+        $('session-dialog').showModal();
+        f.title.focus();
     }
-    function submitCompetition(event) {
+    function submitEvent(event) {
         event.preventDefault();
         const data = new FormData(event.target);
-        state.title = String(data.get('title') ?? '').trim() || state.title;
-        state.date = String(data.get('date') ?? '');
-        state.method = data.get('method') === 'points' ? 'points' : 'places';
+        const v = (k) => String(data.get(k) ?? '').trim();
+        const format = v('format');
+        if (!['SOLO', 'DUO', 'MIXED'].includes(format)) {
+            $('session-error').textContent = 'Choisissez Solo, Duo ou Solo + Duo.';
+            return;
+        }
+        const existing = store.events.find(e => e.id === v('id'));
+        if (existing && format !== 'MIXED' && existing.athletes.some(a => a.format !== format)) {
+            $('session-error').textContent = `Des inscriptions ${format === 'SOLO' ? 'Duo' : 'Solo'} existent déjà : gardez Solo + Duo ou supprimez-les d’abord.`;
+            return;
+        }
+        const target = existing ?? Wod.emptyCompetition(uid(), '', '', format);
+        target.title = v('title') || 'Soundcrossing WOD';
+        target.date = v('date');
+        target.format = format;
+        target.method = v('method') === 'points' ? 'points' : 'places';
+        if (!existing) {
+            store.events.push(target);
+            view = 'athletes';
+        }
+        selectEvent(target.id);
         save();
-        $('competition-dialog').close();
+        $('session-dialog').close();
         render();
+        toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
+    }
+    function deleteEvent() {
+        if (!confirm(`Supprimer l’événement « ${state.title} », ses inscriptions, ses WOD et ses scores ?`))
+            return;
+        store.events = store.events.filter(e => e.id !== state.id);
+        selectEvent('');
+        save();
+        $('session-dialog').close();
+        render();
+        toast('Événement supprimé.');
     }
     function exportExcel() {
+        if (!store.events.length) {
+            toast('Créez d’abord un événement.');
+            return;
+        }
         if (typeof XLSX === 'undefined') {
             toast('Export Excel indisponible.');
             return;
@@ -358,9 +425,10 @@ var Wod;
         XLSX.writeFile(book, `${state.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'wod'} - résultats.xlsx`);
     }
     function loadDemo() {
-        if ((state.athletes.length || state.workouts.length) && !confirm('L’exemple remplace la compétition actuelle. Continuer ?'))
-            return;
-        state = Wod.demo(today());
+        const example = Wod.demo(today());
+        example.id = `exemple-${uid()}`;
+        store.events.push(example);
+        selectEvent(example.id);
         save();
         view = 'ranking';
         rankingTab = 'general';
@@ -443,11 +511,15 @@ var Wod;
             $('entry-dialog').close(); });
         $('workout-form').addEventListener('submit', submitWorkout);
         $('workout-form').addEventListener('change', syncWorkoutForm);
-        $('competition-form').addEventListener('submit', submitCompetition);
-        $('edit-competition').addEventListener('click', openCompetition);
+        $('session-form').addEventListener('submit', submitEvent);
+        $('edit-competition').addEventListener('click', () => openEvent(true));
+        $('new-event-button').addEventListener('click', () => openEvent(false));
+        $('no-event-create').addEventListener('click', () => openEvent(false));
+        $('delete-event').addEventListener('click', deleteEvent);
+        $('event-selector').addEventListener('change', () => { selectEvent($('event-selector').value); save(); render(); });
         $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
         $('export-button').addEventListener('click', exportExcel);
-        $('backup-button').addEventListener('click', () => download(`sauvegarde-wod-${state.date || today()}.json`, JSON.stringify(state, null, 2), 'application/json'));
+        $('backup-button').addEventListener('click', () => download(`sauvegarde-wod-${today()}.json`, JSON.stringify(store, null, 2), 'application/json'));
         $('restore-button').addEventListener('click', () => $('restore-file').click());
         $('restore-file').addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
@@ -455,7 +527,8 @@ var Wod;
             if (!file)
                 return;
             try {
-                state = Wod.validate(JSON.parse(await file.text()));
+                store = Wod.validateStore(JSON.parse(await file.text()));
+                selectEvent(store.selectedId);
                 save();
                 render();
                 $('settings-dialog').close();
@@ -465,12 +538,13 @@ var Wod;
                 toast(error.message);
             }
         });
-        $('demo-button').addEventListener('click', loadDemo);
+        $('no-event-demo').addEventListener('click', loadDemo);
         $('demo-settings').addEventListener('click', loadDemo);
         $('reset-button').addEventListener('click', () => {
-            if (!confirm('Effacer toute la compétition WOD (participants, WOD et scores) ?'))
+            if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?'))
                 return;
-            state = Wod.emptyCompetition(today());
+            store = Wod.emptyStore();
+            selectEvent('');
             save();
             view = 'athletes';
             render();

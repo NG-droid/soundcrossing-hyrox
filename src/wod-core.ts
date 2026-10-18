@@ -13,11 +13,14 @@ namespace Wod {
   }
   // time : temps en ms si terminé, sinon reps faites avant le time cap. amrap/reps : reps. load : kg.
   export interface Score { timeMs?: number; reps?: number; kg?: number; }
+  export type EventFormat = 'SOLO' | 'DUO' | 'MIXED';
   export interface Competition {
-    title: string; date: string; method: Method;
+    id: string; title: string; date: string; format: EventFormat; method: Method;
     athletes: Athlete[]; workouts: Workout[];
     scores: Record<string, Record<string, Score>>;
   }
+  // Comme dans l’app Hyrox : plusieurs événements, chacun avec son format Solo, Duo ou Solo + Duo.
+  export interface Store { version: 2; events: Competition[]; selectedId: string; }
   export interface Placed { athlete: Athlete; rank: number; score: Score; }
   export interface GeneralRow { athlete: Athlete; rank: number; total: number; places: Record<string, number | null>; }
 
@@ -29,9 +32,11 @@ namespace Wod {
   };
   export const CATEGORIES: Category[] = ['H', 'F', 'HH', 'FF', 'HF'];
 
-  export function emptyCompetition(date: string): Competition {
-    return { title: 'Ma compétition WOD', date, method: 'places', athletes: [], workouts: [], scores: {} };
+  export function emptyCompetition(id: string, title: string, date: string, format: EventFormat): Competition {
+    return { id, title, date, format, method: 'places', athletes: [], workouts: [], scores: {} };
   }
+  export function eventFormatLabel(format: EventFormat): string { return format === 'MIXED' ? 'Solo + Duo' : format === 'DUO' ? 'Duo' : 'Solo'; }
+  export function emptyStore(): Store { return { version: 2, events: [], selectedId: '' }; }
   export function category(a: Athlete): Category {
     if (a.format === 'SOLO') return a.gender1;
     return a.gender1 === a.gender2 ? a.gender1 === 'H' ? 'HH' : 'FF' : 'HF';
@@ -140,11 +145,24 @@ namespace Wod {
     const v = value as Partial<Competition> | null;
     if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null)
       throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
+    const format: EventFormat = v.format === 'SOLO' || v.format === 'DUO' ? v.format : 'MIXED';
     return {
-      title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''),
+      id: String(v.id || 'wod-1'), title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''), format,
       method: v.method === 'points' ? 'points' : 'places',
       athletes: v.athletes, workouts: v.workouts, scores: v.scores,
     };
+  }
+
+  // Accepte aussi l’ancienne sauvegarde de la version test (une seule compétition).
+  export function validateStore(value: unknown): Store {
+    const v = value as Partial<Store> | null;
+    if (v && typeof v === 'object' && Array.isArray(v.events)) {
+      const events = v.events.map(validate);
+      const selectedId = events.some(e => e.id === v.selectedId) ? String(v.selectedId) : events[0]?.id ?? '';
+      return { version: 2, events, selectedId };
+    }
+    const single = validate(value);
+    return { version: 2, events: [single], selectedId: single.id };
   }
 
   export function exportRows(c: Competition): { name: string; rows: (string | number | null)[][] }[] {
@@ -183,6 +201,6 @@ namespace Wod {
     athletes.forEach((a, i) => {
       scores.w1![a.id] = s1[i]!; scores.w2![a.id] = { reps: s2[i]! }; scores.w3![a.id] = { kg: s3[i]! };
     });
-    return { title: 'Exemple — Soundcrossing WOD Challenge', date, method: 'places', athletes, workouts, scores };
+    return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', athletes, workouts, scores };
   }
 }
