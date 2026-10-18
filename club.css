@@ -160,3 +160,6 @@
 .format-chip.chip-fmt-HF.active{background:#6b3fb8;border-color:#6b3fb8;color:#fff}
 .format-chip.chip-level-open.active,.format-chip.chip-level-scaled.active{background:#1f4fa3;border-color:#1f4fa3;color:#fff}
 .format-chip.chip-level-pro.active,.format-chip.chip-level-rx.active{background:#a41921;border-color:#a41921;color:#fff}
+/* Case de temps unique hh:mm:ss (heure d’arrivée Hyrox, temps WOD) : les « : » se placent tout seuls. */
+.time-box{width:104px;padding:9px 10px;border:1px solid #9fa3a9;border-radius:6px;background:#fff;font:inherit;font-size:15px;font-weight:600;letter-spacing:.5px;text-align:center;font-variant-numeric:tabular-nums}.time-box:focus{outline:2px solid #d8242d;outline-offset:1px;border-color:#d8242d}.time-box.invalid{border-color:#d8242d;background:#fff0f0}.time-box::placeholder{color:#9a9ea4;font-weight:400}
+.arrival-entry{display:flex;align-items:center;gap:6px;white-space:nowrap}.score-name{font-weight:700;color:#222}.score-name span{font-weight:400;color:#777;padding:0 4px}

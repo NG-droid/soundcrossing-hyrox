@@ -67,22 +67,6 @@ namespace Wod {
     const seconds = parts.reduce((total, n) => total * 60 + n, 0);
     return seconds * 1000;
   }
-  // Même saisie que le temps total de l’Hyrox : heures, minutes et secondes dans trois cases.
-  export function timeFromFields(hours: string, minutes: string, seconds: string): number | null {
-    const parts = [hours, minutes, seconds].map(v => v.trim());
-    if (parts.every(v => !v)) return null;
-    if (parts.some(v => v && !/^\d+$/.test(v))) throw Error('Temps : chiffres entiers uniquement.');
-    const [h, m, sec] = parts.map(v => Number(v || 0)) as [number, number, number];
-    if (m > 59 || sec > 59) throw Error('Temps : minutes et secondes entre 00 et 59.');
-    const ms = ((h * 60 + m) * 60 + sec) * 1000;
-    if (ms <= 0) throw Error('Temps : saisissez une durée.');
-    return ms;
-  }
-  export function timeFields(ms: number | undefined): [string, string, string] {
-    if (ms === undefined) return ['', '', ''];
-    const s = Math.round(ms / 1000), pad = (n: number): string => String(n).padStart(2, '0');
-    return [s >= 3600 ? String(Math.floor(s / 3600)) : '', pad(Math.floor(s / 60) % 60), pad(s % 60)];
-  }
   export function parseNumber(text: string, what: string): number | null {
     const t = text.trim().replace(',', '.');
     if (!t) return null;

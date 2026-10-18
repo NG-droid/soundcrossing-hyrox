@@ -170,10 +170,8 @@ var Wod;
         const s = state.scores[w.id]?.[a.id];
         const field = (name, value, ph, mode = 'numeric') => `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
         if (w.type === 'time') {
-            // Mêmes cases que le temps total de l’Hyrox : hh : mm : ss.
-            const [h, m, sec] = Wod.timeFields(s?.timeMs);
-            const clockField = (name, value, ph, label, max) => `<input type="number" min="0" max="${max}" step="1" data-score="${a.id}" data-field="${name}" value="${esc(value)}" placeholder="${ph}" inputmode="numeric" aria-label="${label}">`;
-            const time = `<div class="duration-clock" role="group" aria-label="Temps">${clockField('time-h', h, 'hh', 'Heures', 9)}<span aria-hidden="true">:</span>${clockField('time-m', m, 'mm', 'Minutes', 59)}<span aria-hidden="true">:</span>${clockField('time-s', sec, 'ss', 'Secondes', 59)}</div>`;
+            // Même case que l’heure d’arrivée de l’Hyrox : on tape hh:mm:ss.
+            const time = Saisie.box(`data-score="${a.id}" data-field="time"`, Saisie.fromMs(s?.timeMs), 'Temps hh:mm:ss');
             const cap = `${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
             return `<div class="score-inputs">${cap}</div>`;
         }
@@ -236,7 +234,7 @@ var Wod;
         try {
             const score = {};
             if (w.type === 'time') {
-                const t = Wod.timeFromFields(get('time-h'), get('time-m'), get('time-s')), reps = Wod.parseNumber(get('reps'), 'Reps');
+                const t = Saisie.duration(get('time')), reps = Wod.parseNumber(get('reps'), 'Reps');
                 if (t !== null)
                     score.timeMs = t;
                 else if (reps !== null)
@@ -267,9 +265,11 @@ var Wod;
                 scores[athleteId] = score;
             else
                 delete scores[athleteId];
-            if (w.type === 'time')
-                Wod.timeFields(score.timeMs).forEach((value, i) => { const f = row.querySelector(`[data-field="time-${'hms'[i]}"]`); if (f)
-                    f.value = value; });
+            if (w.type === 'time') {
+                const f = row.querySelector('[data-field="time"]');
+                if (f)
+                    f.value = Saisie.fromMs(score.timeMs);
+            }
             save();
             $(`saved-${athleteId}`).textContent = Wod.scoreText(w, scores[athleteId]);
         }
@@ -537,6 +537,7 @@ var Wod;
         toast('Exemple chargé : 10 inscrits et 3 WOD. Regardez chaque onglet.');
     }
     function bind() {
+        Saisie.install();
         document.addEventListener('click', e => {
             const t = e.target.closest('button');
             if (!t)
