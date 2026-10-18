@@ -3,6 +3,16 @@
 var Wod;
 (function (Wod) {
     Wod.STATUS_LABELS = { todo: 'À saisir', done: 'Terminé', capped: 'Arrêté au cap', forfeit: 'Forfait' };
+    Wod.phaseOf = (w) => w.phase === 'final' ? 'final' : 'qualif';
+    function phaseWorkouts(c, phase) { return c.workouts.filter(w => Wod.phaseOf(w) === phase); }
+    Wod.phaseWorkouts = phaseWorkouts;
+    function hasFinal(c) { return c.workouts.some(w => w.phase === 'final'); }
+    Wod.hasFinal = hasFinal;
+    function isFinalist(c, a) { return (c.finalists ?? []).includes(a.id); }
+    Wod.isFinalist = isFinalist;
+    // Participants concernés par un WOD : tout le monde en qualif, seulement les qualifiés en finale.
+    function competitors(c, w) { return w.phase === 'final' ? c.athletes.filter(a => isFinalist(c, a)) : c.athletes; }
+    Wod.competitors = competitors;
     Wod.TYPE_LABELS = {
         time: 'For Time (le plus vite)',
         amrap: 'AMRAP (max de tours / reps)',
@@ -193,7 +203,7 @@ var Wod;
     function same(a, b) { return a[0] === b[0] && a[1] === b[1]; }
     function workoutRanking(c, w, key) {
         const scores = c.scores[w.id] ?? {};
-        const rows = c.athletes.filter(a => group(a) === key && hasScore(w, scores[a.id]))
+        const rows = competitors(c, w).filter(a => group(a) === key && hasScore(w, scores[a.id]))
             .map(a => ({ athlete: a, score: scores[a.id], key: sortKey(w, scores[a.id]) }))
             .sort((x, y) => x.key[0] - y.key[0] || x.key[1] - y.key[1] || athleteLabel(x.athlete).localeCompare(athleteLabel(y.athlete)));
         const placed = [];
@@ -209,12 +219,16 @@ var Wod;
     Wod.pointsFor = pointsFor;
     // Classement général d’une catégorie. Sans score (à saisir ou forfait) sur un WOD, l’athlète prend la dernière place
     // de la catégorie (méthode places) ou 0 point (méthode points). Tant qu’un score est à saisir, le classement est provisoire.
-    // Sans aucun WOD, il n’y a rien à classer : pas de classement ni de podium.
-    function generalRanking(c, key) {
-        if (!c.workouts.length)
+    // phase « qualif » : WOD de qualification (tous les WOD s’il n’y a pas de finale).
+    // phase « final » : WOD de finale, qualifiés seulement, points remis à zéro. Égalité : meilleure place sur le
+    // dernier WOD de finale, puis meilleur rang en qualif.
+    function generalRanking(c, key, phase = 'qualif') {
+        const workouts = phaseWorkouts(c, phase);
+        // Sans aucun WOD dans cette phase, il n’y a rien à classer : pas de classement ni de podium.
+        if (!workouts.length)
             return [];
-        const athletes = c.athletes.filter(a => group(a) === key);
-        const byWod = c.workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, key).map(p => [p.athlete.id, p.rank])) }));
+        const athletes = c.athletes.filter(a => group(a) === key && (phase === 'qualif' || isFinalist(c, a)));
+        const byWod = workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, key).map(p => [p.athlete.id, p.rank])) }));
         const rows = athletes.map(a => {
             const places = {};
             let total = 0;
@@ -226,15 +240,29 @@ var Wod;
             return { athlete: a, rank: 0, total, places };
         });
         const better = (x, y) => c.method === 'places' ? x.total - y.total : y.total - x.total;
-        rows.sort((x, y) => better(x, y) || athleteLabel(x.athlete).localeCompare(athleteLabel(y.athlete)));
-        rows.forEach((row, i) => { const prev = rows[i - 1]; row.rank = prev && prev.total === row.total ? prev.rank : i + 1; });
+        let tie = (_x, _y) => 0;
+        if (phase === 'final') {
+            const last = workouts[workouts.length - 1];
+            const qualif = new Map(generalRanking(c, key, 'qualif').map(r => [r.athlete.id, r.rank]));
+            const lastPlace = (r) => (last ? r.places[last.id] : null) ?? Infinity;
+            tie = (x, y) => (lastPlace(x) - lastPlace(y) || 0) || (qualif.get(x.athlete.id) ?? Infinity) - (qualif.get(y.athlete.id) ?? Infinity) || 0;
+        }
+        rows.sort((x, y) => better(x, y) || tie(x, y) || athleteLabel(x.athlete).localeCompare(athleteLabel(y.athlete)));
+        rows.forEach((row, i) => { const prev = rows[i - 1]; row.rank = prev && prev.total === row.total && !tie(prev, row) ? prev.rank : i + 1; });
         return rows;
     }
     Wod.generalRanking = generalRanking;
+    // Qualifie les n premiers du classement des qualifs de ce groupe (les ex æquo à la n-ième place passent aussi).
+    function qualifyTop(c, key, n) {
+        const inGroup = new Set(c.athletes.filter(a => group(a) === key).map(a => a.id));
+        const top = generalRanking(c, key, 'qualif').filter(r => r.rank <= n).map(r => r.athlete.id);
+        return [...(c.finalists ?? []).filter(id => !inGroup.has(id)), ...top];
+    }
+    Wod.qualifyTop = qualifyTop;
     // Scores encore à saisir (ni score ni forfait), pour tout l’événement ou un groupe.
-    function pendingScores(c, key) {
-        const athletes = key ? c.athletes.filter(a => group(a) === key) : c.athletes;
-        return c.workouts.reduce((n, w) => n + athletes.filter(a => scoreStatus(w, c.scores[w.id]?.[a.id]) === 'todo').length, 0);
+    function pendingScores(c, key, phase) {
+        const workouts = phase ? phaseWorkouts(c, phase) : c.workouts;
+        return workouts.reduce((n, w) => n + competitors(c, w).filter(a => (!key || group(a) === key) && scoreStatus(w, c.scores[w.id]?.[a.id]) === 'todo').length, 0);
     }
     Wod.pendingScores = pendingScores;
     function hasAnyScore(c) { return Object.values(c.scores).some(list => Object.keys(list).length > 0); }
@@ -246,6 +274,7 @@ var Wod;
             'Ex æquo : même score = même place ; même total = même rang.',
             c.method === 'places' ? 'Forfait ou score manquant sur un WOD : dernière place de la catégorie.' : 'Forfait ou score manquant sur un WOD : 0 point.',
             'For Time : arrêté au cap = classé après tous ceux qui ont terminé, au nombre de reps.',
+            ...(hasFinal(c) ? ['Finale : seuls les qualifiés y participent, les points repartent de zéro. Égalité : meilleure place sur le dernier WOD de finale, puis classement des qualifs.'] : []),
         ];
     }
     Wod.rulesText = rulesText;
@@ -419,7 +448,8 @@ var Wod;
         if (!w.type || !(w.type in Wod.TYPE_LABELS))
             throw Error(`${where} : type de classement inconnu.`);
         return { id: w.id, name: isText(w.name) && w.name.trim() ? w.name : `WOD ${line}`, description: isText(w.description) ? w.description : '', type: w.type,
-            capMinutes: positive(w.capMinutes, `${where} : time cap`), totalReps: positive(w.totalReps, `${where} : reps au total`), repsPerRound: positive(w.repsPerRound, `${where} : reps par tour`) };
+            capMinutes: positive(w.capMinutes, `${where} : time cap`), totalReps: positive(w.totalReps, `${where} : reps au total`), repsPerRound: positive(w.repsPerRound, `${where} : reps par tour`),
+            ...(w.phase === 'final' ? { phase: 'final' } : {}) };
     }
     function validateScore(value, strict) {
         const s = value;
@@ -492,6 +522,7 @@ var Wod;
             id: isText(v.id) && v.id ? v.id : 'wod-1', title: isText(v.title) && v.title.trim() ? v.title : 'Compétition WOD', date: isText(v.date) ? v.date : '', format,
             method: v.method === 'points' ? 'points' : 'places',
             levels, athletes, workouts, scores,
+            ...(Array.isArray(v.finalists) ? { finalists: [...new Set(v.finalists.filter((id) => isText(id) && athleteIds.has(id)))] } : {}),
         };
     }
     Wod.validate = validate;
@@ -512,17 +543,21 @@ var Wod;
     Wod.validateStore = validateStore;
     function exportRows(c) {
         const sheets = [];
-        const general = [['Catégorie', 'Rang', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
-        for (const key of usedGroups(c))
-            for (const row of generalRanking(c, key))
-                general.push([key, row.rank, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? Wod.STATUS_LABELS[scoreStatus(w, c.scores[w.id]?.[row.athlete.id])]), row.total]);
-        sheets.push({ name: 'Général', rows: general });
+        const phases = hasFinal(c) ? ['qualif', 'final'] : ['qualif'];
+        for (const phase of phases) {
+            const wods = phaseWorkouts(c, phase);
+            const general = [['Catégorie', 'Rang', 'Participant', ...wods.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points', ...(phase === 'qualif' && hasFinal(c) ? ['Finale'] : [])]];
+            for (const key of usedGroups(c))
+                for (const row of generalRanking(c, key, phase))
+                    general.push([key, row.rank, athleteLabel(row.athlete), ...wods.map(w => row.places[w.id] ?? Wod.STATUS_LABELS[scoreStatus(w, c.scores[w.id]?.[row.athlete.id])]), row.total, ...(phase === 'qualif' && hasFinal(c) ? [isFinalist(c, row.athlete) ? 'Qualifié' : ''] : [])]);
+            sheets.push({ name: phase === 'final' ? 'Finale' : hasFinal(c) ? 'Qualifs' : 'Général', rows: general });
+        }
         c.workouts.forEach((w, i) => {
             const rows = [['Catégorie', 'Rang', 'Participant', 'Score']];
             for (const key of usedGroups(c))
                 for (const p of workoutRanking(c, w, key))
                     rows.push([key, p.rank, athleteLabel(p.athlete), scoreText(w, p.score)]);
-            for (const a of c.athletes)
+            for (const a of competitors(c, w))
                 if (c.scores[w.id]?.[a.id]?.forfeit)
                     rows.push([group(a), '—', athleteLabel(a), 'Forfait']);
             const safe = w.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 25).trim() || 'WOD';

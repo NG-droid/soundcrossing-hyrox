@@ -32,6 +32,7 @@
     <input type="hidden" name="id">
     <label>Nom du WOD<input name="name" maxlength="60" required placeholder="Ex. WOD 1 — Fran"></label>
     <fieldset class="format-field"><legend>Comment on le classe ?</legend><div class="format-choice event-format-choice wod-type-choice"><label><input type="radio" name="type" value="time" required><span>For Time<small>Le plus rapide gagne</small></span></label><label><input type="radio" name="type" value="amrap"><span>AMRAP<small>Le plus de tours / reps</small></span></label><label><input type="radio" name="type" value="load"><span>Charge max<small>Le plus lourd gagne (kg)</small></span></label><label><input type="radio" name="type" value="reps"><span>Max reps<small>Reps, calories ou mètres</small></span></label></div></fieldset>
+    <fieldset class="format-field"><legend>Épreuve de</legend><div class="format-choice event-format-choice"><label><input type="radio" name="phase" value="qualif" required><span>Qualification<small>Tous les participants</small></span></label><label><input type="radio" name="phase" value="final"><span>Finale<small>Seulement les qualifiés</small></span></label></div></fieldset>
     <label>Exercices<textarea name="description" rows="3" maxlength="600" placeholder="Ex. 21-15-9 Thrusters 43/30 kg, Pull-ups"></textarea></label>
     <div class="form-grid">
       <label>Durée / time cap (minutes)<input name="capMinutes" type="number" min="0" step="1" placeholder="Facultatif"></label>
