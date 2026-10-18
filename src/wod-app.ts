@@ -15,13 +15,15 @@ namespace Wod {
     store.selectedId = found?.id ?? '';
     state = found ?? emptyCompetition('', '', today(), 'MIXED');
   }
-  const LEVEL_HELP: Record<string, string> = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée', Pro: 'Charges lourdes', Open: 'Charges standard' };
+  const LEVEL_HELP: Record<string, string> = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée' };
   const dateLabel = (date: string): string => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR') : 'sans date';
   let view: View = 'athletes';
   let selectedWod = '';
   let rankingTab = 'general';
   let rankingCat = '';
   let scoreGroup = 'all';
+  let scoreLevel = '';
+  let rankingLevel = '';
   let entryLevel = '';
 
   function load(): void {
@@ -63,7 +65,7 @@ namespace Wod {
     $('count-athletes').textContent = String(state.athletes.length);
     $('count-workouts').textContent = String(state.workouts.length);
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-    $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('view-actions').innerHTML = '';
+    $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
   function setTable(head: string[], rows: string[], emptyText: string): void {
@@ -80,11 +82,27 @@ namespace Wod {
     $(target).innerHTML = items.map(i => `<button class="format-chip${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
   }
 
+  function badge(a: Athlete): string { const c = category(a); return `<span class="format-badge fmt-${c}">${esc(categoryLabel(c))}</span>`; }
+  async function importFile(file: File): Promise<void> {
+    try {
+      if (file.size > 10 * 1024 * 1024) throw Error('Fichier trop volumineux (maximum 10 Mo).');
+      const buffer = await file.arrayBuffer();
+      const book = /\.(csv|tsv|txt)$/i.test(file.name) ? XLSX.read(decodeText(buffer), { type: 'string', raw: true }) : XLSX.read(buffer, { type: 'array' });
+      const sheet = book.Sheets[book.SheetNames[0] ?? '']; if (!sheet) throw Error('Le fichier est vide.');
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as unknown[][];
+      const result = importAthletes(rows, state, uid);
+      if (result.errors.length) { alert(`Import annulé, rien n’a été ajouté. Corrigez le fichier :\n\n${result.errors.slice(0, 8).join('\n')}${result.errors.length > 8 ? `\n… et ${result.errors.length - 8} autre(s) erreur(s).` : ''}`); return; }
+      if (!result.athletes.length) { toast(result.duplicates ? 'Tous ces participants sont déjà inscrits.' : 'Aucun participant trouvé dans le fichier.'); return; }
+      const doublons = result.duplicates ? `\n${result.duplicates} déjà inscrit(s) seront ignorés.` : '';
+      if (!confirm(`Ajouter ${result.athletes.length} inscription(s) à « ${state.title} » ?${doublons}`)) return;
+      state.athletes.push(...result.athletes); save(); render(); toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
+    } catch (error) { toast(error instanceof Error ? error.message : 'Impossible de lire ce fichier.'); }
+  }
   function renderAthletes(): void {
     const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
-    heading('Participants', help, `<button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
+    heading('Participants', help, `<button class="button" data-action="import-template" title="Fichier d’exemple à remplir dans Excel">Modèle CSV</button><button class="button" data-action="import-athletes" title="Fichier CSV ou Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (CSV / Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
     const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a =>
-      `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong></td><td>${esc(group(a))}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+      `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
     setTable(['DOSSARD', 'PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
   }
 
@@ -122,15 +140,22 @@ namespace Wod {
     }
     return `<div class="score-inputs">${field('reps', s?.reps, 'Reps')}<span>reps</span></div>`;
   }
+  // Niveaux qui ont au moins un inscrit, dans l’ordre de l’événement.
+  function levelsUsed(): string[] { return state.levels.filter(l => state.athletes.some(a => a.level === l)); }
+  function shortGroup(g: string, level: string): string { return level ? g.slice(level.length + 3) : g; }
   function renderScores(): void {
     const w = currentWod();
     heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée).` : 'Ajoutez d’abord un WOD.');
     chips('chips', state.workouts.map(x => ({ key: x.id, label: x.name })), selectedWod, 'wod');
     if (!w) { setTable([], [], 'Ajoutez un WOD dans l’onglet 2.'); return; }
     // Une section par groupe (niveau + catégorie) : on saisit et on compare les athlètes d’un même classement.
-    const groups = usedGroups(state);
+    // Filtre par niveau (RX, Scaled) quand l’événement en a plusieurs.
+    const levels = levelsUsed();
+    if (!levels.includes(scoreLevel)) scoreLevel = '';
+    if (levels.length > 1) chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(l => ({ key: l, label: l }))], scoreLevel, 'score-level');
+    const groups = groupsForLevel(state, scoreLevel);
     if (scoreGroup !== 'all' && !groups.includes(scoreGroup)) scoreGroup = 'all';
-    if (groups.length > 1) chips('chips2', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: g }))], scoreGroup, 'score-group');
+    if (groups.length > 1) chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: shortGroup(g, scoreLevel) }))], scoreGroup, 'score-group');
     const rows: string[] = [];
     for (const g of groups) {
       if (scoreGroup !== 'all' && g !== scoreGroup) continue;
@@ -171,11 +196,14 @@ namespace Wod {
   }
 
   function renderRanking(): void {
-    const cats = usedGroups(state);
+    const levels = levelsUsed();
+    if (!levels.includes(rankingLevel)) rankingLevel = levels.length > 1 ? levels[0]! : '';
+    if (levels.length > 1) chips('chips2', levels.map(l => ({ key: l, label: l })), rankingLevel, 'rank-level');
+    const cats = groupsForLevel(state, rankingLevel);
     if (!cats.includes(rankingCat)) rankingCat = cats[0] ?? '';
     if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab)) rankingTab = 'general';
     chips('chips', [{ key: 'general', label: 'Classement général' }, ...state.workouts.map(w => ({ key: w.id, label: w.name }))], rankingTab, 'rank-tab');
-    chips('chips2', cats.map(c => ({ key: c, label: c })), rankingCat, 'rank-cat');
+    chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => ({ key: c, label: shortGroup(c, rankingLevel) })), rankingCat, 'rank-cat');
     if (!rankingCat) { heading('Classements', ''); setTable([], [], 'Ajoutez des participants et des scores.'); return; }
     const cat = rankingCat;
     if (rankingTab === 'general') {
@@ -308,12 +336,12 @@ namespace Wod {
     const target = existing ?? emptyCompetition(uid(), '', '', format);
     target.title = v('title') || 'Soundcrossing WOD'; target.date = v('date'); target.format = format;
     target.method = v('method') === 'points' ? 'points' : 'places';
-    // Changer de niveaux garde la position : RX devient Pro, Scaled devient Open ; « un seul niveau » les retire.
+    // Changer de niveaux : « un seul niveau » les retire.
     const levels = LEVEL_PRESETS[v('levels')] ?? [];
     if (levels.join() !== target.levels.join()) {
       for (const a of target.athletes) {
-        const i = target.levels.indexOf(a.level ?? '');
-        if (levels.length) a.level = levels[Math.max(0, i)]; else delete a.level;
+        const level = remapLevel(a.level, target.levels, levels);
+        if (level) a.level = level; else delete a.level;
       }
       target.levels = [...levels];
     }
@@ -349,6 +377,8 @@ namespace Wod {
       if (d.view) { view = d.view as View; render(); }
       else if (d.action === 'add-athlete') openAthlete();
       else if (d.action === 'add-workout') openWorkout();
+      else if (d.action === 'import-athletes') $('import-file').click();
+      else if (d.action === 'import-template') download(`modele-participants-wod.csv`, toCsv(importTemplate(state)), 'text/csv;charset=utf-8');
       else if (d.editAthlete) openAthlete(state.athletes.find(a => a.id === d.editAthlete));
       else if (d.editWorkout) openWorkout(state.workouts.find(w => w.id === d.editWorkout));
       else if (d.deleteAthlete) deleteAthlete(state.athletes.find(x => x.id === d.deleteAthlete));
@@ -360,6 +390,8 @@ namespace Wod {
       else if (d.rankTab) { rankingTab = d.rankTab; render(); }
       else if (d.rankCat) { rankingCat = d.rankCat; render(); }
       else if (d.scoreGroup) { scoreGroup = d.scoreGroup; render(); }
+      else if (d.scoreLevel !== undefined && t.closest('#chips2')) { scoreLevel = d.scoreLevel; scoreGroup = 'all'; render(); }
+      else if (d.rankLevel) { rankingLevel = d.rankLevel; render(); }
       else if (d.level !== undefined && t.closest('#entry-form')) { entryLevel = d.level; $('entry-error').textContent = ''; syncEntryForm(); }
     });
     $('table-body').addEventListener('change', e => { const i = e.target as HTMLInputElement; if (i.dataset.score) saveScore(i); });
@@ -390,6 +422,7 @@ namespace Wod {
       try { store = validateStore(JSON.parse(await file.text())); selectEvent(store.selectedId); save(); render(); $<HTMLDialogElement>('settings-dialog').close(); toast('Sauvegarde restaurée.'); }
       catch (error) { toast((error as Error).message); }
     });
+    $<HTMLInputElement>('import-file').addEventListener('change', e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; input.value = ''; if (file) void importFile(file); });
     $('no-event-demo').addEventListener('click', loadDemo);
     $('demo-settings').addEventListener('click', loadDemo);
     $('reset-button').addEventListener('click', () => {
