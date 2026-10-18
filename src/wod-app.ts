@@ -15,11 +15,14 @@ namespace Wod {
     store.selectedId = found?.id ?? '';
     state = found ?? emptyCompetition('', '', today(), 'MIXED');
   }
+  const LEVEL_HELP: Record<string, string> = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée', Pro: 'Charges lourdes', Open: 'Charges standard' };
   const dateLabel = (date: string): string => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR') : 'sans date';
   let view: View = 'athletes';
   let selectedWod = '';
   let rankingTab = 'general';
-  let rankingCat: Category | '' = '';
+  let rankingCat = '';
+  let scoreGroup = 'all';
+  let entryLevel = '';
 
   function load(): void {
     try { const raw = localStorage.getItem(KEY); if (raw) store = validateStore(JSON.parse(raw)); }
@@ -81,7 +84,7 @@ namespace Wod {
     const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
     heading('Participants', help, `<button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
     const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a =>
-      `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong></td><td>${categoryLabel(category(a))}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+      `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong></td><td>${esc(group(a))}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
     setTable(['DOSSARD', 'PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
   }
 
@@ -124,8 +127,17 @@ namespace Wod {
     heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée).` : 'Ajoutez d’abord un WOD.');
     chips('chips', state.workouts.map(x => ({ key: x.id, label: x.name })), selectedWod, 'wod');
     if (!w) { setTable([], [], 'Ajoutez un WOD dans l’onglet 2.'); return; }
-    const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a =>
-      `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${categoryLabel(category(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
+    // Une section par groupe (niveau + catégorie) : on saisit et on compare les athlètes d’un même classement.
+    const groups = usedGroups(state);
+    if (scoreGroup !== 'all' && !groups.includes(scoreGroup)) scoreGroup = 'all';
+    if (groups.length > 1) chips('chips2', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: g }))], scoreGroup, 'score-group');
+    const rows: string[] = [];
+    for (const g of groups) {
+      if (scoreGroup !== 'all' && g !== scoreGroup) continue;
+      if (groups.length > 1) rows.push(`<tr class="group-row"><td colspan="4">${esc(g)}</td></tr>`);
+      for (const a of state.athletes.filter(x => group(x) === g).sort((x, y) => x.bib.localeCompare(y.bib, 'fr', { numeric: true })))
+        rows.push(`<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
+    }
     setTable(['DOSSARD', 'PARTICIPANT', 'SCORE', 'ENREGISTRÉ'], rows, 'Ajoutez des participants dans l’onglet 1.');
   }
   function saveScore(input: HTMLInputElement): void {
@@ -159,11 +171,11 @@ namespace Wod {
   }
 
   function renderRanking(): void {
-    const cats = usedCategories(state);
-    if (!cats.includes(rankingCat as Category)) rankingCat = cats[0] ?? '';
+    const cats = usedGroups(state);
+    if (!cats.includes(rankingCat)) rankingCat = cats[0] ?? '';
     if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab)) rankingTab = 'general';
     chips('chips', [{ key: 'general', label: 'Classement général' }, ...state.workouts.map(w => ({ key: w.id, label: w.name }))], rankingTab, 'rank-tab');
-    chips('chips2', cats.map(c => ({ key: c, label: categoryLabel(c) })), rankingCat, 'rank-cat');
+    chips('chips2', cats.map(c => ({ key: c, label: c })), rankingCat, 'rank-cat');
     if (!rankingCat) { heading('Classements', ''); setTable([], [], 'Ajoutez des participants et des scores.'); return; }
     const cat = rankingCat;
     if (rankingTab === 'general') {
@@ -188,13 +200,15 @@ namespace Wod {
     $('name2-field').hidden = !duo; (form.elements.namedItem('name2') as HTMLInputElement).required = duo;
     document.querySelectorAll<HTMLButtonElement>('#entry-form [data-gender]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.gender === (b.dataset.person === '1' ? gender1 : gender2))));
     document.querySelectorAll<HTMLButtonElement>('#entry-form [data-entry-format]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.entryFormat === entryFormat)));
+    document.querySelectorAll<HTMLButtonElement>('#entry-form [data-level]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.level === entryLevel)));
     const status = $('registration-category');
     let message = '';
-    if (!entryFormat) message = 'Choisissez Solo ou Duo.';
+    if (state.levels.length && !entryLevel) message = 'Choisissez le niveau.';
+    else if (!entryFormat) message = 'Choisissez Solo ou Duo.';
     else if (!gender1) message = 'Choisissez H ou F pour le participant 1.';
     else if (duo && !gender2) message = 'Choisissez H ou F pour le participant 2.';
     status.classList.toggle('complete', !message);
-    status.textContent = message || `Format : ${categoryLabel(category({ id: '', bib: '', format: entryFormat as Athlete['format'], name1: '', name2: '', gender1: gender1 as 'H' | 'F', gender2: duo ? gender2 : '' }))}`;
+    status.textContent = message || `Format : ${entryLevel ? `${entryLevel} · ` : ''}${categoryLabel(category({ id: '', bib: '', format: entryFormat as Athlete['format'], name1: '', name2: '', gender1: gender1 as 'H' | 'F', gender2: duo ? gender2 : '' }))}`;
   }
   function openAthlete(a?: Athlete): void {
     const form = $<HTMLFormElement>('entry-form'); form.reset();
@@ -202,6 +216,9 @@ namespace Wod {
     $('entry-title').textContent = a ? 'Modifier l’inscription' : state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
     $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${eventFormatLabel(state.format)}${a ? ` · Dossard ${a.bib}` : ''}`;
     $('entry-format-choice').hidden = state.format !== 'MIXED';
+    $('entry-level-choice').hidden = !state.levels.length;
+    $('entry-level-buttons').innerHTML = state.levels.map(l => `<button type="button" data-level="${esc(l)}" aria-pressed="false">${esc(l)}<small>${esc(LEVEL_HELP[l] ?? '')}</small></button>`).join('');
+    entryLevel = a?.level && state.levels.includes(a.level) ? a.level : state.levels.length === 1 ? state.levels[0]! : '';
     f.id!.value = a?.id ?? ''; f.name1!.value = a?.name1 ?? ''; f.name2!.value = a?.name2 ?? '';
     entryFormat = a?.format ?? (state.format === 'MIXED' ? '' : state.format); gender1 = a?.gender1 ?? ''; gender2 = a?.gender2 ?? '';
     $('delete-entry').hidden = !a;
@@ -212,12 +229,13 @@ namespace Wod {
     const data = new FormData(event.target as HTMLFormElement);
     const v = (k: string): string => String(data.get(k) ?? '').trim();
     const error = (text: string): void => { $('entry-error').textContent = text; };
+    if (state.levels.length && !entryLevel) return error('Choisissez le niveau.');
     if (!entryFormat) return error('Choisissez Solo ou Duo.');
     if (!gender1) return error('Choisissez H ou F pour le participant 1.');
     if (entryFormat === 'DUO' && !gender2) return error('Choisissez H ou F pour le participant 2.');
     if (entryFormat === 'DUO' && !v('name2')) return error('Renseignez le nom du participant 2.');
     const old = state.athletes.find(a => a.id === v('id'));
-    const athlete: Athlete = { id: old?.id ?? uid(), bib: old?.bib ?? nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '' };
+    const athlete: Athlete = { id: old?.id ?? uid(), bib: old?.bib ?? nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '', ...(state.levels.length ? { level: entryLevel } : {}) };
     const i = state.athletes.findIndex(a => a.id === athlete.id);
     if (i >= 0) state.athletes[i] = athlete; else state.athletes.push(athlete);
     save(); $<HTMLDialogElement>('entry-dialog').close(); render(); toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
@@ -271,6 +289,7 @@ namespace Wod {
     const radio = (name: string): RadioNodeList => form.elements.namedItem(name) as RadioNodeList;
     f.id!.value = edit ? state.id : ''; f.title!.value = edit ? state.title : 'Soundcrossing WOD'; f.date!.value = edit ? state.date : today();
     radio('format').value = edit ? state.format : ''; radio('method').value = edit ? state.method : 'places';
+    radio('levels').value = edit ? Object.keys(LEVEL_PRESETS).find(k => LEVEL_PRESETS[k]!.join() === state.levels.join()) ?? 'none' : 'none';
     $('event-dialog-title').textContent = edit ? 'Modifier l’événement' : 'Créer un événement';
     $('save-event-button').textContent = edit ? 'Enregistrer' : 'Créer l’événement';
     $('delete-event').hidden = !edit;
@@ -289,6 +308,15 @@ namespace Wod {
     const target = existing ?? emptyCompetition(uid(), '', '', format);
     target.title = v('title') || 'Soundcrossing WOD'; target.date = v('date'); target.format = format;
     target.method = v('method') === 'points' ? 'points' : 'places';
+    // Changer de niveaux garde la position : RX devient Pro, Scaled devient Open ; « un seul niveau » les retire.
+    const levels = LEVEL_PRESETS[v('levels')] ?? [];
+    if (levels.join() !== target.levels.join()) {
+      for (const a of target.athletes) {
+        const i = target.levels.indexOf(a.level ?? '');
+        if (levels.length) a.level = levels[Math.max(0, i)]; else delete a.level;
+      }
+      target.levels = [...levels];
+    }
     if (!existing) { store.events.push(target); view = 'athletes'; }
     selectEvent(target.id); save(); $<HTMLDialogElement>('session-dialog').close(); render(); toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
   }
@@ -330,7 +358,9 @@ namespace Wod {
         if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; save(); render(); }
       } else if (d.wod) { selectedWod = d.wod; render(); }
       else if (d.rankTab) { rankingTab = d.rankTab; render(); }
-      else if (d.rankCat) { rankingCat = d.rankCat as Category; render(); }
+      else if (d.rankCat) { rankingCat = d.rankCat; render(); }
+      else if (d.scoreGroup) { scoreGroup = d.scoreGroup; render(); }
+      else if (d.level !== undefined && t.closest('#entry-form')) { entryLevel = d.level; $('entry-error').textContent = ''; syncEntryForm(); }
     });
     $('table-body').addEventListener('change', e => { const i = e.target as HTMLInputElement; if (i.dataset.score) saveScore(i); });
     $('table-body').addEventListener('keydown', e => {

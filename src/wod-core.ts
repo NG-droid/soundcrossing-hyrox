@@ -6,6 +6,7 @@ namespace Wod {
   export interface Athlete {
     id: string; bib: string; format: 'SOLO' | 'DUO';
     name1: string; name2: string; gender1: 'H' | 'F'; gender2: '' | 'H' | 'F';
+    level?: string;
   }
   export interface Workout {
     id: string; name: string; description: string; type: ScoreType;
@@ -16,6 +17,8 @@ namespace Wod {
   export type EventFormat = 'SOLO' | 'DUO' | 'MIXED';
   export interface Competition {
     id: string; title: string; date: string; format: EventFormat; method: Method;
+    // Niveaux (divisions) : chacun a son propre classement, par ex. RX et Scaled. Vide = un seul niveau.
+    levels: string[];
     athletes: Athlete[]; workouts: Workout[];
     scores: Record<string, Record<string, Score>>;
   }
@@ -33,7 +36,7 @@ namespace Wod {
   export const CATEGORIES: Category[] = ['H', 'F', 'HH', 'FF', 'HF'];
 
   export function emptyCompetition(id: string, title: string, date: string, format: EventFormat): Competition {
-    return { id, title, date, format, method: 'places', athletes: [], workouts: [], scores: {} };
+    return { id, title, date, format, method: 'places', levels: [], athletes: [], workouts: [], scores: {} };
   }
   export function eventFormatLabel(format: EventFormat): string { return format === 'MIXED' ? 'Solo + Duo' : format === 'DUO' ? 'Duo' : 'Solo'; }
   export function emptyStore(): Store { return { version: 2, events: [], selectedId: '' }; }
@@ -42,6 +45,9 @@ namespace Wod {
     return a.gender1 === a.gender2 ? a.gender1 === 'H' ? 'HH' : 'FF' : 'HF';
   }
   export function categoryLabel(c: Category): string { return c.length === 1 ? `Solo ${c}` : `Duo ${c}`; }
+  export const LEVEL_PRESETS: Record<string, string[]> = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'] };
+  // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
+  export function group(a: Athlete): string { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
   export function athleteLabel(a: Athlete): string { return a.format === 'DUO' ? `${a.name1} & ${a.name2}` : a.name1; }
 
   export function clock(ms: number): string {
@@ -94,9 +100,9 @@ namespace Wod {
   }
   function same(a: [number, number], b: [number, number]): boolean { return a[0] === b[0] && a[1] === b[1]; }
 
-  export function workoutRanking(c: Competition, w: Workout, cat: Category): Placed[] {
+  export function workoutRanking(c: Competition, w: Workout, key: string): Placed[] {
     const scores = c.scores[w.id] ?? {};
-    const rows = c.athletes.filter(a => category(a) === cat && hasScore(w, scores[a.id]))
+    const rows = c.athletes.filter(a => group(a) === key && hasScore(w, scores[a.id]))
       .map(a => ({ athlete: a, score: scores[a.id] as Score, key: sortKey(w, scores[a.id] as Score) }))
       .sort((x, y) => x.key[0] - y.key[0] || x.key[1] - y.key[1] || athleteLabel(x.athlete).localeCompare(athleteLabel(y.athlete)));
     const placed: Placed[] = [];
@@ -112,9 +118,9 @@ namespace Wod {
 
   // Classement général d’une catégorie. Sans score sur un WOD, l’athlète prend la dernière place
   // de la catégorie (méthode places) ou 0 point (méthode points).
-  export function generalRanking(c: Competition, cat: Category): GeneralRow[] {
-    const athletes = c.athletes.filter(a => category(a) === cat);
-    const byWod = c.workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, cat).map(p => [p.athlete.id, p.rank])) }));
+  export function generalRanking(c: Competition, key: string): GeneralRow[] {
+    const athletes = c.athletes.filter(a => group(a) === key);
+    const byWod = c.workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, key).map(p => [p.athlete.id, p.rank])) }));
     const rows = athletes.map(a => {
       const places: Record<string, number | null> = {};
       let total = 0;
@@ -131,9 +137,11 @@ namespace Wod {
     return rows;
   }
 
-  export function usedCategories(c: Competition): Category[] {
-    const used = new Set(c.athletes.map(category));
-    return CATEGORIES.filter(cat => used.has(cat));
+  // Groupes présents, dans l’ordre des niveaux puis H, F, HH, FF, HF.
+  export function usedGroups(c: Competition): string[] {
+    const levelIndex = (a: Athlete): number => { const i = c.levels.indexOf(a.level ?? ''); return i < 0 ? c.levels.length : i; };
+    const sorted = [...c.athletes].sort((x, y) => levelIndex(x) - levelIndex(y) || CATEGORIES.indexOf(category(x)) - CATEGORIES.indexOf(category(y)));
+    return [...new Set(sorted.map(group))];
   }
 
   export function nextBib(c: Competition): string {
@@ -149,6 +157,7 @@ namespace Wod {
     return {
       id: String(v.id || 'wod-1'), title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''), format,
       method: v.method === 'points' ? 'points' : 'places',
+      levels: Array.isArray(v.levels) ? v.levels.map(String) : [],
       athletes: v.athletes, workouts: v.workouts, scores: v.scores,
     };
   }
@@ -168,13 +177,13 @@ namespace Wod {
   export function exportRows(c: Competition): { name: string; rows: (string | number | null)[][] }[] {
     const sheets: { name: string; rows: (string | number | null)[][] }[] = [];
     const general: (string | number | null)[][] = [['Catégorie', 'Rang', 'Dossard', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
-    for (const cat of usedCategories(c)) for (const row of generalRanking(c, cat))
-      general.push([categoryLabel(cat), row.rank, row.athlete.bib, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? '—'), row.total]);
+    for (const key of usedGroups(c)) for (const row of generalRanking(c, key))
+      general.push([key, row.rank, row.athlete.bib, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? '—'), row.total]);
     sheets.push({ name: 'Général', rows: general });
     c.workouts.forEach((w, i) => {
       const rows: (string | number | null)[][] = [['Catégorie', 'Rang', 'Dossard', 'Participant', 'Score']];
-      for (const cat of usedCategories(c)) for (const p of workoutRanking(c, w, cat))
-        rows.push([categoryLabel(cat), p.rank, p.athlete.bib, athleteLabel(p.athlete), scoreText(w, p.score)]);
+      for (const key of usedGroups(c)) for (const p of workoutRanking(c, w, key))
+        rows.push([key, p.rank, p.athlete.bib, athleteLabel(p.athlete), scoreText(w, p.score)]);
       const safe = w.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 25).trim() || 'WOD';
       sheets.push({ name: `${i + 1}. ${safe}`, rows });
     });
@@ -188,7 +197,8 @@ namespace Wod {
       ['Emma Durand', '', 'F', ''], ['Léa Moreau', '', 'F', ''], ['Manon Simon', '', 'F', ''],
       ['Jules Blanc', 'Zoé Bernard', 'H', 'F'], ['Nina Roux', 'Paul Faure', 'F', 'H'], ['Inès Morel', 'Max Girard', 'F', 'H'],
     ];
-    const athletes: Athlete[] = people.map(([n1, n2, g1, g2], i) => ({ id: id('a', i), bib: String(i + 1).padStart(3, '0'), format: n2 ? 'DUO' : 'SOLO', name1: n1, name2: n2, gender1: g1, gender2: g2 }));
+    const scaled = new Set([3, 6]);
+    const athletes: Athlete[] = people.map(([n1, n2, g1, g2], i) => ({ id: id('a', i), bib: String(i + 1).padStart(3, '0'), format: n2 ? 'DUO' : 'SOLO', name1: n1, name2: n2, gender1: g1, gender2: g2, level: scaled.has(i) ? 'Scaled' : 'RX' }));
     const workouts: Workout[] = [
       { id: 'w1', name: 'WOD 1 — Fran', description: '21-15-9 : Thrusters 43/30 kg, Pull-ups. Time cap 8 min.', type: 'time', capMinutes: 8, totalReps: 90, repsPerRound: null },
       { id: 'w2', name: 'WOD 2 — Cindy', description: 'AMRAP 12 min : 5 Pull-ups, 10 Push-ups, 15 Air squats.', type: 'amrap', capMinutes: 12, totalReps: null, repsPerRound: 30 },
@@ -201,6 +211,6 @@ namespace Wod {
     athletes.forEach((a, i) => {
       scores.w1![a.id] = s1[i]!; scores.w2![a.id] = { reps: s2[i]! }; scores.w3![a.id] = { kg: s3[i]! };
     });
-    return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', athletes, workouts, scores };
+    return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', levels: ['RX', 'Scaled'], athletes, workouts, scores };
   }
 }
