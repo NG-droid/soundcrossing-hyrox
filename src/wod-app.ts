@@ -129,11 +129,8 @@ namespace Wod {
     const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric'): string =>
       `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
     if (w.type === 'time') {
-      // Mêmes cases que le temps total de l’Hyrox : hh : mm : ss.
-      const [h, m, sec] = timeFields(s?.timeMs);
-      const clockField = (name: string, value: string, ph: string, label: string, max: number): string =>
-        `<input type="number" min="0" max="${max}" step="1" data-score="${a.id}" data-field="${name}" value="${esc(value)}" placeholder="${ph}" inputmode="numeric" aria-label="${label}">`;
-      const time = `<div class="duration-clock" role="group" aria-label="Temps">${clockField('time-h', h, 'hh', 'Heures', 9)}<span aria-hidden="true">:</span>${clockField('time-m', m, 'mm', 'Minutes', 59)}<span aria-hidden="true">:</span>${clockField('time-s', sec, 'ss', 'Secondes', 59)}</div>`;
+      // Même case que l’heure d’arrivée de l’Hyrox : on tape hh:mm:ss.
+      const time = Saisie.box(`data-score="${a.id}" data-field="time"`, Saisie.fromMs(s?.timeMs), 'Temps hh:mm:ss');
       const cap = `${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
       return `<div class="score-inputs">${cap}</div>`;
     }
@@ -184,7 +181,7 @@ namespace Wod {
     try {
       const score: Score = {};
       if (w.type === 'time') {
-        const t = timeFromFields(get('time-h'), get('time-m'), get('time-s')), reps = parseNumber(get('reps'), 'Reps');
+        const t = Saisie.duration(get('time')), reps = parseNumber(get('reps'), 'Reps');
         if (t !== null) score.timeMs = t; else if (reps !== null) score.reps = Math.round(reps);
         if (t !== null && w.capMinutes && t > w.capMinutes * 60000) throw Error(`Ce temps dépasse le time cap de ${w.capMinutes} min : saisissez plutôt les reps faites.`);
         if (score.reps !== undefined && w.totalReps && score.reps >= w.totalReps) throw Error(`Avec ${score.reps} reps le WOD est terminé : saisissez le temps.`);
@@ -199,7 +196,7 @@ namespace Wod {
       row.querySelectorAll('input').forEach(i => i.classList.remove('invalid'));
       const scores = state.scores[w.id] ??= {};
       if (hasScore(w, score)) scores[athleteId] = score; else delete scores[athleteId];
-      if (w.type === 'time') timeFields(score.timeMs).forEach((value, i) => { const f = row.querySelector<HTMLInputElement>(`[data-field="time-${'hms'[i]}"]`); if (f) f.value = value; });
+      if (w.type === 'time') { const f = row.querySelector<HTMLInputElement>('[data-field="time"]'); if (f) f.value = Saisie.fromMs(score.timeMs); }
       save();
       $(`saved-${athleteId}`).textContent = scoreText(w, scores[athleteId]);
     } catch (error) {
@@ -381,6 +378,7 @@ namespace Wod {
   }
 
   function bind(): void {
+    Saisie.install();
     document.addEventListener('click', e => {
       const t = (e.target as HTMLElement).closest<HTMLElement>('button');
       if (!t) return;

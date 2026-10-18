@@ -109,13 +109,3 @@ test('WOD : Scaled puis RX ; un ancien événement Pro / Open ou RX / Scaled est
   assert.equal(W.remapLevel('Scaled', []), undefined);
 });
 
-test('temps du WOD saisi en heures, minutes et secondes comme dans l’Hyrox', () => {
-  assert.equal(W.timeFromFields('', '7', '45'), 465000);
-  assert.equal(W.timeFromFields('1', '02', '30'), 3750000);
-  assert.equal(W.timeFromFields('', '', ''), null);
-  assert.throws(() => W.timeFromFields('', '7', '75'), /00 et 59/);
-  assert.throws(() => W.timeFromFields('', '7,5', ''), /entiers/);
-  assert.throws(() => W.timeFromFields('0', '0', '0'), /durée/);
-  assert.deepEqual(Array.from(W.timeFields(465000)), ['', '07', '45']);
-  assert.deepEqual(Array.from(W.timeFields(3750000)), ['1', '02', '30']);
-});
