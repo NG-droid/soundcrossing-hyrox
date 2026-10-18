@@ -4,13 +4,14 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light"><meta name="theme-color" content="#182422">
   <title>Soundcrossing — WOD (version test)</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='20' fill='%23182422'/%3E%3Cpath d='M20 18h24c25 0 25 34 0 34H33v12H20zm13 12v10h10c8 0 8-10 0-10z' fill='%23d7fa64'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="club.css"><link rel="stylesheet" href="wod.css">
   <script defer src="vendor/xlsx.full.min.js"></script><script defer src="dist/wod-core.js"></script><script defer src="dist/wod-app.js"></script>
 </head>
 <body>
-  <header class="club-header"><a href="#" class="club-brand" aria-label="Soundcrossing"><img src="assets/soundcrossing-logo.jpg" alt="Sound Crossing"><span>COMPÉTITION<br><b>WOD</b></span></a><div class="header-tools"><span class="wod-test-badge">VERSION TEST</span><button id="settings-button" class="button">Paramètres</button></div></header>
+  <header class="club-header"><a href="#" class="club-brand" aria-label="Soundcrossing"><img src="assets/soundcrossing-logo.jpg" alt="Sound Crossing"><span>ÉVÉNEMENTS<br><b>& RÉSULTATS</b></span></a><div class="header-tools"><span id="save-status" class="saved"></span><span id="wall-clock"></span><button id="settings-button" class="button"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Paramètres</button></div></header>
   <main><div class="workspace">
-    <section class="event-heading"><div><div class="event-title-row"><h1 id="title"></h1><button id="edit-competition" class="event-edit-button" aria-label="Modifier la compétition" title="Modifier la compétition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m13 6 5 5"/></svg></button></div><p id="subtitle" class="event-date"></p></div></section>
+    <section class="event-heading"><div><div class="event-title-row"><h1 id="title"></h1><button id="edit-competition" class="event-edit-button" aria-label="Modifier la compétition" title="Modifier la compétition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m13 6 5 5"/></svg></button></div><span class="event-format-badge">WOD · version test</span><p id="session-date" class="event-date"></p></div></section>
     <div class="day-tabs"><div><button data-view="athletes" class="active">1. Participants <small id="count-athletes">0</small></button><button data-view="workouts">2. WOD <small id="count-workouts">0</small></button><button data-view="scores">3. Scores</button><button data-view="ranking">4. Classements</button></div></div>
     <section class="list-panel"><div class="list-heading"><div><h2 id="view-title"></h2><p id="view-description" class="modal-note"></p></div><div class="list-heading-actions" id="view-actions"></div></div>
       <div id="chips" class="format-chips"></div><div id="chips2" class="format-chips"></div>
@@ -19,23 +20,12 @@
     </section>
   </div></main>
 
-  <dialog id="athlete-dialog" class="modal"><form id="athlete-form"><div class="modal-heading"><div><div class="eyebrow">INSCRIPTION</div><h2 id="athlete-title">Ajouter un participant</h2></div><button type="button" class="icon-button close-modal" aria-label="Fermer">×</button></div>
-    <input type="hidden" name="id">
-    <div class="form-grid">
-      <label>Format<select name="format"><option value="SOLO">Solo (1 personne)</option><option value="DUO">Duo (2 personnes)</option></select></label>
-      <label>Dossard<input name="bib" maxlength="10" required></label>
-      <label>Participant 1<input name="name1" maxlength="120" required placeholder="Prénom et nom" autocomplete="off"></label>
-      <label>Sexe<select name="gender1"><option value="H">Homme</option><option value="F">Femme</option></select></label>
-      <label class="duo-only">Participant 2<input name="name2" maxlength="120" placeholder="Prénom et nom" autocomplete="off"></label>
-      <label class="duo-only">Sexe<select name="gender2"><option value="H">Homme</option><option value="F">Femme</option></select></label>
-    </div>
-    <p class="form-error" id="athlete-error" role="alert"></p>
-    <div class="modal-footer"><button type="button" class="button close-modal">Annuler</button><button class="button primary">Enregistrer</button></div></form></dialog>
+  <dialog id="entry-dialog" class="modal"><form id="entry-form"><div class="modal-heading"><div><div class="eyebrow">INSCRIPTION À LA COMPÉTITION</div><h2 id="entry-title">Ajouter un participant</h2></div><button type="button" class="icon-button close-modal" aria-label="Fermer">×</button></div><p id="entry-course" class="course-context"></p><input type="hidden" name="id"><div class="form-grid"><fieldset class="format-field wide"><legend>Inscription</legend><div class="format-choice"><button type="button" data-entry-format="SOLO" aria-pressed="false">Solo<small>1 participant</small></button><button type="button" data-entry-format="DUO" aria-pressed="false">Duo<small>2 participants</small></button></div></fieldset><div class="person-field"><fieldset class="gender-field"><legend>Participant 1</legend><div class="gender-choice"><button type="button" data-person="1" data-gender="H" aria-pressed="false">H <small>Homme</small></button><button type="button" data-person="1" data-gender="F" aria-pressed="false">F <small>Femme</small></button></div></fieldset><label>Nom et prénom<input name="name1" maxlength="120" required placeholder="Prénom et nom" autocomplete="off"></label></div><div id="name2-field" class="person-field" hidden><fieldset class="gender-field"><legend>Participant 2</legend><div class="gender-choice"><button type="button" data-person="2" data-gender="H" aria-pressed="false">H <small>Homme</small></button><button type="button" data-person="2" data-gender="F" aria-pressed="false">F <small>Femme</small></button></div></fieldset><label>Nom et prénom<input name="name2" maxlength="120" placeholder="Prénom et nom" autocomplete="off"></label></div><p id="registration-category" class="wide registration-category" role="status">Choisissez Solo ou Duo.</p></div><p id="entry-error" class="form-error" role="alert"></p><div class="modal-footer"><button id="delete-entry" type="button" class="button danger" hidden>Supprimer</button><span class="spacer"></span><button type="button" class="button close-modal">Annuler</button><button type="submit" class="button primary">Enregistrer l’inscription</button></div></form></dialog>
 
   <dialog id="workout-dialog" class="modal"><form id="workout-form"><div class="modal-heading"><div><div class="eyebrow">ÉPREUVE</div><h2 id="workout-title">Ajouter un WOD</h2></div><button type="button" class="icon-button close-modal" aria-label="Fermer">×</button></div>
     <input type="hidden" name="id">
     <label>Nom du WOD<input name="name" maxlength="60" required placeholder="Ex. WOD 1 — Fran"></label>
-    <label>Comment on le classe ?<select name="type"><option value="time">For Time : le plus rapide gagne</option><option value="amrap">AMRAP : le plus de tours / reps en un temps donné</option><option value="load">Charge max : le plus lourd gagne (kg)</option><option value="reps">Max reps / calories / mètres : le plus grand nombre gagne</option></select></label>
+    <fieldset class="format-field"><legend>Comment on le classe ?</legend><div class="format-choice event-format-choice wod-type-choice"><label><input type="radio" name="type" value="time" required><span>For Time<small>Le plus rapide gagne</small></span></label><label><input type="radio" name="type" value="amrap"><span>AMRAP<small>Le plus de tours / reps</small></span></label><label><input type="radio" name="type" value="load"><span>Charge max<small>Le plus lourd gagne (kg)</small></span></label><label><input type="radio" name="type" value="reps"><span>Max reps<small>Reps, calories ou mètres</small></span></label></div></fieldset>
     <label>Exercices<textarea name="description" rows="3" maxlength="600" placeholder="Ex. 21-15-9 Thrusters 43/30 kg, Pull-ups"></textarea></label>
     <div class="form-grid">
       <label>Durée / time cap (minutes)<input name="capMinutes" type="number" min="0" step="1" placeholder="Facultatif"></label>
@@ -46,10 +36,10 @@
     <p class="form-error" id="workout-error" role="alert"></p>
     <div class="modal-footer"><button type="button" class="button close-modal">Annuler</button><button class="button primary">Enregistrer</button></div></form></dialog>
 
-  <dialog id="competition-dialog" class="modal"><form id="competition-form"><div class="modal-heading"><h2>La compétition</h2><button type="button" class="icon-button close-modal" aria-label="Fermer">×</button></div>
-    <label>Nom<input name="title" maxlength="100" required></label>
-    <label>Date<input name="date" type="date"></label>
-    <label>Classement général<select name="method"><option value="places">Addition des places : 1er = 1 point, 2e = 2 points… le plus petit total gagne</option><option value="points">Table de points : 1er = 100, 2e = 97, 3e = 94… le plus gros total gagne</option></select></label>
+  <dialog id="competition-dialog" class="modal"><form id="competition-form"><div class="modal-heading"><div><div class="eyebrow">VOTRE COMPÉTITION WOD</div><h2>Modifier la compétition</h2></div><button type="button" class="icon-button close-modal" aria-label="Fermer">×</button></div>
+    <label>Nom de la compétition<input name="title" maxlength="100" required></label>
+    <label>Date de la compétition<input name="date" type="date" required></label>
+    <fieldset class="format-field"><legend>Classement général</legend><div class="format-choice event-format-choice"><label><input type="radio" name="method" value="places" required><span>Addition des places<small>1er = 1 pt, 2e = 2 pts… le plus petit total gagne</small></span></label><label><input type="radio" name="method" value="points"><span>Table de points<small>1er = 100, 2e = 97… le plus gros total gagne</small></span></label></div></fieldset>
     <p class="modal-note">Un participant sans score sur un WOD prend la dernière place de sa catégorie (ou 0 point).</p>
     <div class="modal-footer"><button type="button" class="button close-modal">Annuler</button><button class="button primary">Enregistrer</button></div></form></dialog>
 

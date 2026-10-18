@@ -18,8 +18,14 @@ namespace Wod {
     catch { toast('Les données WOD enregistrées sont illisibles. Restaurez une sauvegarde.'); }
   }
   function save(): void {
+    let error = false;
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
-    catch { toast('Impossible d’enregistrer dans ce navigateur. Faites une sauvegarde fichier.'); }
+    catch { error = true; toast('Impossible d’enregistrer dans ce navigateur. Faites une sauvegarde fichier.'); }
+    savedStatus(error);
+  }
+  function savedStatus(error = false): void {
+    const element = $('save-status'); element.classList.toggle('error', error);
+    element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
   }
   let toastTimer = 0;
   function toast(text: string): void {
@@ -33,8 +39,7 @@ namespace Wod {
 
   function render(): void {
     $('title').textContent = state.title;
-    const date = state.date ? new Date(`${state.date}T12:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
-    $('subtitle').textContent = `${date}${date ? ' · ' : ''}${state.method === 'places' ? 'Classement : addition des places' : 'Classement : table de points'}`;
+    $('session-date').textContent = state.date ? new Date(`${state.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Choisissez une date pour la compétition.';
     $('count-athletes').textContent = String(state.athletes.length);
     $('count-workouts').textContent = String(state.workouts.length);
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
@@ -158,29 +163,52 @@ namespace Wod {
     setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
   }
 
-  function openAthlete(a?: Athlete): void {
-    const form = $<HTMLFormElement>('athlete-form'); form.reset();
-    const f = form.elements as unknown as Record<string, HTMLInputElement>;
-    $('athlete-title').textContent = a ? 'Modifier le participant' : 'Ajouter un participant';
-    f.id!.value = a?.id ?? ''; f.bib!.value = a?.bib ?? nextBib(state); f.format!.value = a?.format ?? 'SOLO';
-    f.name1!.value = a?.name1 ?? ''; f.name2!.value = a?.name2 ?? ''; f.gender1!.value = a?.gender1 ?? 'H'; f.gender2!.value = a?.gender2 || 'F';
-    $('athlete-error').textContent = ''; syncAthleteForm(); $<HTMLDialogElement>('athlete-dialog').showModal(); f.name1!.focus();
+  let entryFormat: Athlete['format'] | '' = '';
+  let gender1: '' | 'H' | 'F' = '', gender2: '' | 'H' | 'F' = '';
+  function syncEntryForm(): void {
+    const form = $<HTMLFormElement>('entry-form'), duo = entryFormat === 'DUO';
+    form.classList.toggle('duo-registration', duo);
+    $('name2-field').hidden = !duo; (form.elements.namedItem('name2') as HTMLInputElement).required = duo;
+    document.querySelectorAll<HTMLButtonElement>('#entry-form [data-gender]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.gender === (b.dataset.person === '1' ? gender1 : gender2))));
+    document.querySelectorAll<HTMLButtonElement>('#entry-form [data-entry-format]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.entryFormat === entryFormat)));
+    const status = $('registration-category');
+    let message = '';
+    if (!entryFormat) message = 'Choisissez Solo ou Duo.';
+    else if (!gender1) message = 'Choisissez H ou F pour le participant 1.';
+    else if (duo && !gender2) message = 'Choisissez H ou F pour le participant 2.';
+    status.classList.toggle('complete', !message);
+    status.textContent = message || `Format : ${categoryLabel(category({ id: '', bib: '', format: entryFormat as Athlete['format'], name1: '', name2: '', gender1: gender1 as 'H' | 'F', gender2: duo ? gender2 : '' }))}`;
   }
-  function syncAthleteForm(): void {
-    const duo = ($<HTMLFormElement>('athlete-form').elements.namedItem('format') as HTMLSelectElement).value === 'DUO';
-    document.querySelectorAll<HTMLElement>('#athlete-form .duo-only').forEach(el => { el.hidden = !duo; });
+  function openAthlete(a?: Athlete): void {
+    const form = $<HTMLFormElement>('entry-form'); form.reset();
+    const f = form.elements as unknown as Record<string, HTMLInputElement>;
+    $('entry-title').textContent = a ? 'Modifier l’inscription' : 'Ajouter un participant';
+    $('entry-course').textContent = `${state.title}${a ? ` · Dossard ${a.bib}` : ''}`;
+    f.id!.value = a?.id ?? ''; f.name1!.value = a?.name1 ?? ''; f.name2!.value = a?.name2 ?? '';
+    entryFormat = a?.format ?? ''; gender1 = a?.gender1 ?? ''; gender2 = a?.gender2 ?? '';
+    $('delete-entry').hidden = !a;
+    $('entry-error').textContent = ''; syncEntryForm(); $<HTMLDialogElement>('entry-dialog').showModal();
   }
   function submitAthlete(event: Event): void {
     event.preventDefault();
     const data = new FormData(event.target as HTMLFormElement);
     const v = (k: string): string => String(data.get(k) ?? '').trim();
-    const format = v('format') === 'DUO' ? 'DUO' : 'SOLO';
-    const athlete: Athlete = { id: v('id') || uid(), bib: v('bib'), format, name1: v('name1'), name2: format === 'DUO' ? v('name2') : '', gender1: v('gender1') === 'F' ? 'F' : 'H', gender2: format === 'DUO' ? v('gender2') === 'F' ? 'F' : 'H' : '' };
-    if (format === 'DUO' && !athlete.name2) { $('athlete-error').textContent = 'Renseignez le participant 2.'; return; }
-    if (state.athletes.some(a => a.bib === athlete.bib && a.id !== athlete.id)) { $('athlete-error').textContent = `Le dossard ${athlete.bib} est déjà pris.`; return; }
+    const error = (text: string): void => { $('entry-error').textContent = text; };
+    if (!entryFormat) return error('Choisissez Solo ou Duo.');
+    if (!gender1) return error('Choisissez H ou F pour le participant 1.');
+    if (entryFormat === 'DUO' && !gender2) return error('Choisissez H ou F pour le participant 2.');
+    if (entryFormat === 'DUO' && !v('name2')) return error('Renseignez le nom du participant 2.');
+    const old = state.athletes.find(a => a.id === v('id'));
+    const athlete: Athlete = { id: old?.id ?? uid(), bib: old?.bib ?? nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '' };
     const i = state.athletes.findIndex(a => a.id === athlete.id);
     if (i >= 0) state.athletes[i] = athlete; else state.athletes.push(athlete);
-    save(); $<HTMLDialogElement>('athlete-dialog').close(); render(); toast(i >= 0 ? 'Participant modifié.' : 'Participant ajouté.');
+    save(); $<HTMLDialogElement>('entry-dialog').close(); render(); toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
+  }
+  function deleteAthlete(a: Athlete | undefined): boolean {
+    if (!a || !confirm(`Supprimer ${athleteLabel(a)} et ses scores ?`)) return false;
+    state.athletes = state.athletes.filter(x => x !== a);
+    for (const s of Object.values(state.scores)) delete s[a.id];
+    save(); render(); return true;
   }
 
   const HELP: Record<ScoreType, string> = {
@@ -190,7 +218,7 @@ namespace Wod {
     reps: 'Max reps : on saisit un nombre (reps, calories ou mètres). Le plus grand gagne.',
   };
   function syncWorkoutForm(): void {
-    const type = ($<HTMLFormElement>('workout-form').elements.namedItem('type') as HTMLSelectElement).value as ScoreType;
+    const type = (($<HTMLFormElement>('workout-form').elements.namedItem('type') as RadioNodeList).value || 'time') as ScoreType;
     document.querySelectorAll<HTMLElement>('#workout-form .type-time').forEach(el => { el.hidden = type !== 'time'; });
     document.querySelectorAll<HTMLElement>('#workout-form .type-amrap').forEach(el => { el.hidden = type !== 'amrap'; });
     $('workout-help').textContent = HELP[type];
@@ -199,7 +227,7 @@ namespace Wod {
     const form = $<HTMLFormElement>('workout-form'); form.reset();
     const f = form.elements as unknown as Record<string, HTMLInputElement>;
     $('workout-title').textContent = w ? 'Modifier le WOD' : 'Ajouter un WOD';
-    f.id!.value = w?.id ?? ''; f.name!.value = w?.name ?? `WOD ${state.workouts.length + 1}`; f.type!.value = w?.type ?? 'time';
+    f.id!.value = w?.id ?? ''; f.name!.value = w?.name ?? `WOD ${state.workouts.length + 1}`; (form.elements.namedItem('type') as RadioNodeList).value = w?.type ?? 'time';
     f.description!.value = w?.description ?? ''; f.capMinutes!.value = String(w?.capMinutes ?? ''); f.totalReps!.value = String(w?.totalReps ?? ''); f.repsPerRound!.value = String(w?.repsPerRound ?? '');
     $('workout-error').textContent = ''; syncWorkoutForm(); $<HTMLDialogElement>('workout-dialog').showModal(); f.name!.focus();
   }
@@ -221,7 +249,7 @@ namespace Wod {
 
   function openCompetition(): void {
     const f = $<HTMLFormElement>('competition-form').elements as unknown as Record<string, HTMLInputElement>;
-    f.title!.value = state.title; f.date!.value = state.date; f.method!.value = state.method;
+    f.title!.value = state.title; f.date!.value = state.date; ($<HTMLFormElement>('competition-form').elements.namedItem('method') as RadioNodeList).value = state.method;
     $<HTMLDialogElement>('competition-dialog').showModal();
   }
   function submitCompetition(event: Event): void {
@@ -255,14 +283,9 @@ namespace Wod {
       else if (d.action === 'add-workout') openWorkout();
       else if (d.editAthlete) openAthlete(state.athletes.find(a => a.id === d.editAthlete));
       else if (d.editWorkout) openWorkout(state.workouts.find(w => w.id === d.editWorkout));
-      else if (d.deleteAthlete) {
-        const a = state.athletes.find(x => x.id === d.deleteAthlete);
-        if (a && confirm(`Supprimer ${athleteLabel(a)} et ses scores ?`)) {
-          state.athletes = state.athletes.filter(x => x !== a);
-          for (const s of Object.values(state.scores)) delete s[a.id];
-          save(); render();
-        }
-      } else if (d.deleteWorkout) {
+      else if (d.deleteAthlete) deleteAthlete(state.athletes.find(x => x.id === d.deleteAthlete));
+      else if (d.entryFormat) { entryFormat = d.entryFormat as Athlete['format']; $('entry-error').textContent = ''; syncEntryForm(); }
+      else if (d.gender && d.person) { if (d.person === '1') gender1 = d.gender as 'H' | 'F'; else gender2 = d.gender as 'H' | 'F'; $('entry-error').textContent = ''; syncEntryForm(); } else if (d.deleteWorkout) {
         const w = state.workouts.find(x => x.id === d.deleteWorkout);
         if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; save(); render(); }
       } else if (d.wod) { selectedWod = d.wod; render(); }
@@ -277,8 +300,8 @@ namespace Wod {
       const all = [...document.querySelectorAll<HTMLInputElement>('#table-body input[data-field]')].filter(x => x.dataset.field === i.dataset.field);
       all[all.indexOf(i) + 1]?.focus();
     });
-    $('athlete-form').addEventListener('submit', submitAthlete);
-    $('athlete-form').addEventListener('change', syncAthleteForm);
+    $('entry-form').addEventListener('submit', submitAthlete);
+    $('delete-entry').addEventListener('click', () => { const id = ($<HTMLFormElement>('entry-form').elements.namedItem('id') as HTMLInputElement).value; if (deleteAthlete(state.athletes.find(a => a.id === id))) $<HTMLDialogElement>('entry-dialog').close(); });
     $('workout-form').addEventListener('submit', submitWorkout);
     $('workout-form').addEventListener('change', syncWorkoutForm);
     $('competition-form').addEventListener('submit', submitCompetition);
@@ -301,5 +324,9 @@ namespace Wod {
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => { load(); bind(); render(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    load(); bind(); render(); savedStatus();
+    const tick = (): void => { $('wall-clock').textContent = new Date().toLocaleTimeString('fr-FR'); };
+    tick(); window.setInterval(tick, 1000);
+  });
 }

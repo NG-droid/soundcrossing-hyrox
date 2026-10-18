@@ -23,12 +23,20 @@ var Wod;
         }
     }
     function save() {
+        let error = false;
         try {
             localStorage.setItem(KEY, JSON.stringify(state));
         }
         catch {
+            error = true;
             toast('Impossible d’enregistrer dans ce navigateur. Faites une sauvegarde fichier.');
         }
+        savedStatus(error);
+    }
+    function savedStatus(error = false) {
+        const element = $('save-status');
+        element.classList.toggle('error', error);
+        element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
     }
     let toastTimer = 0;
     function toast(text) {
@@ -47,8 +55,7 @@ var Wod;
     }
     function render() {
         $('title').textContent = state.title;
-        const date = state.date ? new Date(`${state.date}T12:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
-        $('subtitle').textContent = `${date}${date ? ' · ' : ''}${state.method === 'places' ? 'Classement : addition des places' : 'Classement : table de points'}`;
+        $('session-date').textContent = state.date ? new Date(`${state.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Choisissez une date pour la compétition.';
         $('count-athletes').textContent = String(state.athletes.length);
         $('count-workouts').textContent = String(state.workouts.length);
         document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
@@ -199,50 +206,77 @@ var Wod;
         const rows = Wod.workoutRanking(state, w, cat).map(p => `<tr><td class="rank">${p.rank}</td><td><strong>${esc(Wod.athleteLabel(p.athlete))}</strong><div class="muted">Dossard ${esc(p.athlete.bib)}</div></td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
         setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
     }
+    let entryFormat = '';
+    let gender1 = '', gender2 = '';
+    function syncEntryForm() {
+        const form = $('entry-form'), duo = entryFormat === 'DUO';
+        form.classList.toggle('duo-registration', duo);
+        $('name2-field').hidden = !duo;
+        form.elements.namedItem('name2').required = duo;
+        document.querySelectorAll('#entry-form [data-gender]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.gender === (b.dataset.person === '1' ? gender1 : gender2))));
+        document.querySelectorAll('#entry-form [data-entry-format]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.entryFormat === entryFormat)));
+        const status = $('registration-category');
+        let message = '';
+        if (!entryFormat)
+            message = 'Choisissez Solo ou Duo.';
+        else if (!gender1)
+            message = 'Choisissez H ou F pour le participant 1.';
+        else if (duo && !gender2)
+            message = 'Choisissez H ou F pour le participant 2.';
+        status.classList.toggle('complete', !message);
+        status.textContent = message || `Format : ${Wod.categoryLabel(Wod.category({ id: '', bib: '', format: entryFormat, name1: '', name2: '', gender1: gender1, gender2: duo ? gender2 : '' }))}`;
+    }
     function openAthlete(a) {
-        const form = $('athlete-form');
+        const form = $('entry-form');
         form.reset();
         const f = form.elements;
-        $('athlete-title').textContent = a ? 'Modifier le participant' : 'Ajouter un participant';
+        $('entry-title').textContent = a ? 'Modifier l’inscription' : 'Ajouter un participant';
+        $('entry-course').textContent = `${state.title}${a ? ` · Dossard ${a.bib}` : ''}`;
         f.id.value = a?.id ?? '';
-        f.bib.value = a?.bib ?? Wod.nextBib(state);
-        f.format.value = a?.format ?? 'SOLO';
         f.name1.value = a?.name1 ?? '';
         f.name2.value = a?.name2 ?? '';
-        f.gender1.value = a?.gender1 ?? 'H';
-        f.gender2.value = a?.gender2 || 'F';
-        $('athlete-error').textContent = '';
-        syncAthleteForm();
-        $('athlete-dialog').showModal();
-        f.name1.focus();
-    }
-    function syncAthleteForm() {
-        const duo = $('athlete-form').elements.namedItem('format').value === 'DUO';
-        document.querySelectorAll('#athlete-form .duo-only').forEach(el => { el.hidden = !duo; });
+        entryFormat = a?.format ?? '';
+        gender1 = a?.gender1 ?? '';
+        gender2 = a?.gender2 ?? '';
+        $('delete-entry').hidden = !a;
+        $('entry-error').textContent = '';
+        syncEntryForm();
+        $('entry-dialog').showModal();
     }
     function submitAthlete(event) {
         event.preventDefault();
         const data = new FormData(event.target);
         const v = (k) => String(data.get(k) ?? '').trim();
-        const format = v('format') === 'DUO' ? 'DUO' : 'SOLO';
-        const athlete = { id: v('id') || uid(), bib: v('bib'), format, name1: v('name1'), name2: format === 'DUO' ? v('name2') : '', gender1: v('gender1') === 'F' ? 'F' : 'H', gender2: format === 'DUO' ? v('gender2') === 'F' ? 'F' : 'H' : '' };
-        if (format === 'DUO' && !athlete.name2) {
-            $('athlete-error').textContent = 'Renseignez le participant 2.';
-            return;
-        }
-        if (state.athletes.some(a => a.bib === athlete.bib && a.id !== athlete.id)) {
-            $('athlete-error').textContent = `Le dossard ${athlete.bib} est déjà pris.`;
-            return;
-        }
+        const error = (text) => { $('entry-error').textContent = text; };
+        if (!entryFormat)
+            return error('Choisissez Solo ou Duo.');
+        if (!gender1)
+            return error('Choisissez H ou F pour le participant 1.');
+        if (entryFormat === 'DUO' && !gender2)
+            return error('Choisissez H ou F pour le participant 2.');
+        if (entryFormat === 'DUO' && !v('name2'))
+            return error('Renseignez le nom du participant 2.');
+        const old = state.athletes.find(a => a.id === v('id'));
+        const athlete = { id: old?.id ?? uid(), bib: old?.bib ?? Wod.nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '' };
         const i = state.athletes.findIndex(a => a.id === athlete.id);
         if (i >= 0)
             state.athletes[i] = athlete;
         else
             state.athletes.push(athlete);
         save();
-        $('athlete-dialog').close();
+        $('entry-dialog').close();
         render();
-        toast(i >= 0 ? 'Participant modifié.' : 'Participant ajouté.');
+        toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
+    }
+    function deleteAthlete(a) {
+        if (!a || !confirm(`Supprimer ${Wod.athleteLabel(a)} et ses scores ?`))
+            return false;
+        state.athletes = state.athletes.filter(x => x !== a);
+        for (const s of Object.values(state.scores))
+            delete s[a.id];
+        save();
+        render();
+        return true;
     }
     const HELP = {
         time: 'For Time : on saisit le temps. Si un athlète n’a pas fini avant le time cap, on saisit ses reps : il est classé après tous ceux qui ont fini.',
@@ -251,7 +285,7 @@ var Wod;
         reps: 'Max reps : on saisit un nombre (reps, calories ou mètres). Le plus grand gagne.',
     };
     function syncWorkoutForm() {
-        const type = $('workout-form').elements.namedItem('type').value;
+        const type = ($('workout-form').elements.namedItem('type').value || 'time');
         document.querySelectorAll('#workout-form .type-time').forEach(el => { el.hidden = type !== 'time'; });
         document.querySelectorAll('#workout-form .type-amrap').forEach(el => { el.hidden = type !== 'amrap'; });
         $('workout-help').textContent = HELP[type];
@@ -263,7 +297,7 @@ var Wod;
         $('workout-title').textContent = w ? 'Modifier le WOD' : 'Ajouter un WOD';
         f.id.value = w?.id ?? '';
         f.name.value = w?.name ?? `WOD ${state.workouts.length + 1}`;
-        f.type.value = w?.type ?? 'time';
+        form.elements.namedItem('type').value = w?.type ?? 'time';
         f.description.value = w?.description ?? '';
         f.capMinutes.value = String(w?.capMinutes ?? '');
         f.totalReps.value = String(w?.totalReps ?? '');
@@ -300,7 +334,7 @@ var Wod;
         const f = $('competition-form').elements;
         f.title.value = state.title;
         f.date.value = state.date;
-        f.method.value = state.method;
+        $('competition-form').elements.namedItem('method').value = state.method;
         $('competition-dialog').showModal();
     }
     function submitCompetition(event) {
@@ -356,15 +390,20 @@ var Wod;
                 openAthlete(state.athletes.find(a => a.id === d.editAthlete));
             else if (d.editWorkout)
                 openWorkout(state.workouts.find(w => w.id === d.editWorkout));
-            else if (d.deleteAthlete) {
-                const a = state.athletes.find(x => x.id === d.deleteAthlete);
-                if (a && confirm(`Supprimer ${Wod.athleteLabel(a)} et ses scores ?`)) {
-                    state.athletes = state.athletes.filter(x => x !== a);
-                    for (const s of Object.values(state.scores))
-                        delete s[a.id];
-                    save();
-                    render();
-                }
+            else if (d.deleteAthlete)
+                deleteAthlete(state.athletes.find(x => x.id === d.deleteAthlete));
+            else if (d.entryFormat) {
+                entryFormat = d.entryFormat;
+                $('entry-error').textContent = '';
+                syncEntryForm();
+            }
+            else if (d.gender && d.person) {
+                if (d.person === '1')
+                    gender1 = d.gender;
+                else
+                    gender2 = d.gender;
+                $('entry-error').textContent = '';
+                syncEntryForm();
             }
             else if (d.deleteWorkout) {
                 const w = state.workouts.find(x => x.id === d.deleteWorkout);
@@ -399,8 +438,9 @@ var Wod;
             const all = [...document.querySelectorAll('#table-body input[data-field]')].filter(x => x.dataset.field === i.dataset.field);
             all[all.indexOf(i) + 1]?.focus();
         });
-        $('athlete-form').addEventListener('submit', submitAthlete);
-        $('athlete-form').addEventListener('change', syncAthleteForm);
+        $('entry-form').addEventListener('submit', submitAthlete);
+        $('delete-entry').addEventListener('click', () => { const id = $('entry-form').elements.namedItem('id').value; if (deleteAthlete(state.athletes.find(a => a.id === id)))
+            $('entry-dialog').close(); });
         $('workout-form').addEventListener('submit', submitWorkout);
         $('workout-form').addEventListener('change', syncWorkoutForm);
         $('competition-form').addEventListener('submit', submitCompetition);
@@ -437,5 +477,13 @@ var Wod;
             $('settings-dialog').close();
         });
     }
-    document.addEventListener('DOMContentLoaded', () => { load(); bind(); render(); });
+    document.addEventListener('DOMContentLoaded', () => {
+        load();
+        bind();
+        render();
+        savedStatus();
+        const tick = () => { $('wall-clock').textContent = new Date().toLocaleTimeString('fr-FR'); };
+        tick();
+        window.setInterval(tick, 1000);
+    });
 })(Wod || (Wod = {}));

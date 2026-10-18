@@ -1,5 +1,4 @@
 /* Module WOD (version test) : compléments aux styles de l’app. */
-.wod-test-badge{background:#d8242d;color:#fff;font-size:11px;font-weight:700;letter-spacing:1px;padding:6px 10px;border-radius:6px}
 .wod-table{min-width:760px}
 .wod-table td{vertical-align:middle}
 .wod-table .rank{font-weight:800;font-size:18px}
@@ -13,8 +12,9 @@
 .score-saved{font-weight:700;font-variant-numeric:tabular-nums}
 .modal textarea{width:100%;font:inherit;padding:10px;border:1px solid #ddd;border-radius:6px;background:#f3f3ef;margin-top:6px}
 .wod-desc{color:#555;font-size:12px;max-width:420px}
-#subtitle{text-transform:none;font-size:15px;font-weight:600;color:#555}
 .score-inputs{flex-wrap:nowrap}
 .score-inputs input{width:80px}
 .score-inputs span{white-space:nowrap}
 .wod-table td:first-child{width:90px}
+.wod-type-choice{display:grid;grid-template-columns:1fr 1fr}
+.event-format-choice>label>span small{line-height:1.4}
