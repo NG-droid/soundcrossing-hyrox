@@ -46,4 +46,10 @@ declare const XLSX: {
     book_append_sheet(book: Pace.Workbook, sheet: Pace.Worksheet, name: string): void;
   };
   writeFile(book: Pace.Workbook, filename: string): void;
+  write(book: Pace.Workbook, options: Record<string, unknown>): ArrayBuffer;
+  CFB: {
+    read(data: Uint8Array, options: Record<string, unknown>): unknown;
+    find(container: unknown, path: string): { content: Uint8Array; size: number } | null;
+    write(container: unknown, options: Record<string, unknown>): Uint8Array;
+  };
 };

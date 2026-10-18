@@ -87,19 +87,35 @@ test('import CSV: formats, niveaux, doublons et erreurs ligne par ligne', () => 
   assert.match(W.importAthletes([['Nom'], ['A']], c, id).errors[0], /Format/);
 });
 
-test('modèle CSV : séparateur point-virgule et colonne Niveau seulement si besoin', () => {
+test('modèle vierge : seulement les colonnes, séparateur point-virgule, Niveau si besoin', () => {
   const duo = W.emptyCompetition('d', 'D', '', 'DUO');
-  const csv = W.toCsv(W.importTemplate(duo));
-  assert.ok(csv.startsWith('﻿"Format";"Participant 1";"Participant 2"\r\n"Duo HH"'));
-  assert.equal(W.importTemplate({ ...duo, levels: ['RX', 'Scaled'] })[0].length, 4);
+  assert.equal(W.toCsv(W.importTemplate(duo)), '﻿"Format";"Participant 1";"Participant 2"\r\n');
+  const cols = W.importColumns({ ...duo, levels: ['Scaled', 'RX'] });
+  assert.deepEqual(Array.from(cols, c => c.header), ['Format', 'Participant 1', 'Participant 2', 'Niveau']);
+  assert.deepEqual(Array.from(cols[0].choices), ['Duo HH', 'Duo FF', 'Duo HF']);
+  assert.deepEqual(Array.from(cols[3].choices), ['Scaled', 'RX']);
 });
 
-test('WOD : seulement RX et Scaled ; un ancien événement Pro / Open passe en RX / Scaled', () => {
+test('WOD : Scaled puis RX ; un ancien événement Pro / Open ou RX / Scaled est remis dans cet ordre', () => {
   assert.deepEqual(Object.keys(W.LEVEL_PRESETS), ['none', 'rx']);
+  assert.deepEqual(Array.from(W.LEVEL_PRESETS.rx), ['Scaled', 'RX']);
   const old = { ...W.emptyCompetition('c', 'T', '', 'SOLO'), levels: ['Pro', 'Open'], athletes: [{ ...athlete('a'), level: 'Pro' }, { ...athlete('b', 'F'), level: 'Open' }] };
   const c = W.validate(JSON.parse(JSON.stringify(old)));
-  assert.deepEqual(Array.from(c.levels), ['RX', 'Scaled']);
+  assert.deepEqual(Array.from(c.levels), ['Scaled', 'RX']);
   assert.deepEqual(Array.from(c.athletes, a => a.level), ['RX', 'Scaled']);
+  assert.deepEqual(Array.from(W.validate({ ...old, levels: ['RX', 'Scaled'], athletes: [{ ...athlete('a'), level: 'RX' }] }).levels), ['Scaled', 'RX']);
   assert.deepEqual(Array.from(W.groupsForLevel(c, 'RX')), ['RX · Solo H']);
-  assert.deepEqual(Array.from(W.groupsForLevel(c, '')), ['RX · Solo H', 'Scaled · Solo F']);
+  assert.deepEqual(Array.from(W.groupsForLevel(c, '')), ['Scaled · Solo F', 'RX · Solo H']);
+  assert.equal(W.remapLevel('Scaled', []), undefined);
+});
+
+test('temps du WOD saisi en heures, minutes et secondes comme dans l’Hyrox', () => {
+  assert.equal(W.timeFromFields('', '7', '45'), 465000);
+  assert.equal(W.timeFromFields('1', '02', '30'), 3750000);
+  assert.equal(W.timeFromFields('', '', ''), null);
+  assert.throws(() => W.timeFromFields('', '7', '75'), /00 et 59/);
+  assert.throws(() => W.timeFromFields('', '7,5', ''), /entiers/);
+  assert.throws(() => W.timeFromFields('0', '0', '0'), /durée/);
+  assert.deepEqual(Array.from(W.timeFields(465000)), ['', '07', '45']);
+  assert.deepEqual(Array.from(W.timeFields(3750000)), ['1', '02', '30']);
 });

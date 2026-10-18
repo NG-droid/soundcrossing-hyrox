@@ -106,7 +106,7 @@ var Wod;
         $('view-actions').innerHTML = actions;
     }
     function chips(target, items, active, attr) {
-        $(target).innerHTML = items.map(i => `<button class="format-chip${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
+        $(target).innerHTML = items.map(i => `<button class="format-chip${i.css ? ` ${i.css}` : ''}${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
     }
     function badge(a) { const c = Wod.category(a); return `<span class="format-badge fmt-${c}">${esc(Wod.categoryLabel(c))}</span>`; }
     async function importFile(file) {
@@ -142,9 +142,9 @@ var Wod;
     }
     function renderAthletes() {
         const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
-        heading('Participants', help, `<button class="button" data-action="import-template" title="Fichier d’exemple à remplir dans Excel">Modèle CSV</button><button class="button" data-action="import-athletes" title="Fichier CSV ou Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (CSV / Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
-        const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a => `<tr><td>${esc(a.bib)}</td><td><strong>${esc(Wod.athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
-        setTable(['DOSSARD', 'PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
+        heading('Participants', help, `<button class="button" data-action="import-template-xlsx" title="Fichier vierge avec listes déroulantes et légende">Modèle Excel</button><button class="button" data-action="import-template" title="Fichier vierge, seulement les colonnes">Modèle CSV</button><button class="button" data-action="import-athletes" title="Fichier CSV ou Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (CSV / Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
+        const rows = state.athletes.map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+        setTable(['PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
     }
     function workoutDetails(w) {
         const parts = [];
@@ -170,7 +170,11 @@ var Wod;
         const s = state.scores[w.id]?.[a.id];
         const field = (name, value, ph, mode = 'numeric') => `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
         if (w.type === 'time') {
-            const cap = `${field('time', s?.timeMs !== undefined ? Wod.clock(s.timeMs) : '', 'Temps 7:45', 'text')}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
+            // Mêmes cases que le temps total de l’Hyrox : hh : mm : ss.
+            const [h, m, sec] = Wod.timeFields(s?.timeMs);
+            const clockField = (name, value, ph, label, max) => `<input type="number" min="0" max="${max}" step="1" data-score="${a.id}" data-field="${name}" value="${esc(value)}" placeholder="${ph}" inputmode="numeric" aria-label="${label}">`;
+            const time = `<div class="duration-clock" role="group" aria-label="Temps">${clockField('time-h', h, 'hh', 'Heures', 9)}<span aria-hidden="true">:</span>${clockField('time-m', m, 'mm', 'Minutes', 59)}<span aria-hidden="true">:</span>${clockField('time-s', sec, 'ss', 'Secondes', 59)}</div>`;
+            const cap = `${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
             return `<div class="score-inputs">${cap}</div>`;
         }
         if (w.type === 'load')
@@ -185,6 +189,12 @@ var Wod;
     // Niveaux qui ont au moins un inscrit, dans l’ordre de l’événement.
     function levelsUsed() { return state.levels.filter(l => state.athletes.some(a => a.level === l)); }
     function shortGroup(g, level) { return level ? g.slice(level.length + 3) : g; }
+    // Mêmes couleurs que les étiquettes : niveau (Scaled bleu, RX rouge) et format (Solo H bleu…).
+    const levelChip = (l) => ({ key: l, label: l, css: `chip-level-${l.toLowerCase()}` });
+    const groupChip = (g, level) => {
+        const a = state.athletes.find(x => Wod.group(x) === g);
+        return { key: g, label: shortGroup(g, level), css: a ? `chip-fmt-${Wod.category(a)}` : '' };
+    };
     function renderScores() {
         const w = currentWod();
         heading('Saisie des scores', w ? `${w.name} — ${Wod.TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée).` : 'Ajoutez d’abord un WOD.');
@@ -199,22 +209,22 @@ var Wod;
         if (!levels.includes(scoreLevel))
             scoreLevel = '';
         if (levels.length > 1)
-            chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(l => ({ key: l, label: l }))], scoreLevel, 'score-level');
+            chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(levelChip)], scoreLevel, 'score-level');
         const groups = Wod.groupsForLevel(state, scoreLevel);
         if (scoreGroup !== 'all' && !groups.includes(scoreGroup))
             scoreGroup = 'all';
         if (groups.length > 1)
-            chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: shortGroup(g, scoreLevel) }))], scoreGroup, 'score-group');
+            chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => groupChip(g, scoreLevel))], scoreGroup, 'score-group');
         const rows = [];
         for (const g of groups) {
             if (scoreGroup !== 'all' && g !== scoreGroup)
                 continue;
             if (groups.length > 1)
-                rows.push(`<tr class="group-row"><td colspan="4">${esc(g)}</td></tr>`);
-            for (const a of state.athletes.filter(x => Wod.group(x) === g).sort((x, y) => x.bib.localeCompare(y.bib, 'fr', { numeric: true })))
-                rows.push(`<tr><td>${esc(a.bib)}</td><td><strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(Wod.group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(Wod.scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
+                rows.push(`<tr class="group-row"><td colspan="3">${esc(g)}</td></tr>`);
+            for (const a of state.athletes.filter(x => Wod.group(x) === g))
+                rows.push(`<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(Wod.group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(Wod.scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
         }
-        setTable(['DOSSARD', 'PARTICIPANT', 'SCORE', 'ENREGISTRÉ'], rows, 'Ajoutez des participants dans l’onglet 1.');
+        setTable(['PARTICIPANT', 'SCORE', 'ENREGISTRÉ'], rows, 'Ajoutez des participants dans l’onglet 1.');
     }
     function saveScore(input) {
         const w = currentWod();
@@ -226,7 +236,7 @@ var Wod;
         try {
             const score = {};
             if (w.type === 'time') {
-                const t = Wod.parseTime(get('time')), reps = Wod.parseNumber(get('reps'), 'Reps');
+                const t = Wod.timeFromFields(get('time-h'), get('time-m'), get('time-s')), reps = Wod.parseNumber(get('reps'), 'Reps');
                 if (t !== null)
                     score.timeMs = t;
                 else if (reps !== null)
@@ -257,6 +267,9 @@ var Wod;
                 scores[athleteId] = score;
             else
                 delete scores[athleteId];
+            if (w.type === 'time')
+                Wod.timeFields(score.timeMs).forEach((value, i) => { const f = row.querySelector(`[data-field="time-${'hms'[i]}"]`); if (f)
+                    f.value = value; });
             save();
             $(`saved-${athleteId}`).textContent = Wod.scoreText(w, scores[athleteId]);
         }
@@ -270,14 +283,14 @@ var Wod;
         if (!levels.includes(rankingLevel))
             rankingLevel = levels.length > 1 ? levels[0] : '';
         if (levels.length > 1)
-            chips('chips2', levels.map(l => ({ key: l, label: l })), rankingLevel, 'rank-level');
+            chips('chips2', levels.map(levelChip), rankingLevel, 'rank-level');
         const cats = Wod.groupsForLevel(state, rankingLevel);
         if (!cats.includes(rankingCat))
             rankingCat = cats[0] ?? '';
         if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab))
             rankingTab = 'general';
         chips('chips', [{ key: 'general', label: 'Classement général' }, ...state.workouts.map(w => ({ key: w.id, label: w.name }))], rankingTab, 'rank-tab');
-        chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => ({ key: c, label: shortGroup(c, rankingLevel) })), rankingCat, 'rank-cat');
+        chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => groupChip(c, rankingLevel)), rankingCat, 'rank-cat');
         if (!rankingCat) {
             heading('Classements', '');
             setTable([], [], 'Ajoutez des participants et des scores.');
@@ -286,13 +299,13 @@ var Wod;
         const cat = rankingCat;
         if (rankingTab === 'general') {
             heading('Classement général', state.method === 'places' ? 'Addition des places sur tous les WOD : le plus petit total gagne.' : 'Table de points (1er = 100, puis −3 par place) : le plus gros total gagne.');
-            const rows = Wod.generalRanking(state, cat).map(r => `<tr><td class="rank">${r.rank}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">Dossard ${esc(r.athlete.bib)}</div></td>${state.workouts.map(w => `<td>${r.places[w.id] === null ? '<span class="muted">—</span>' : `${r.places[w.id]}<sup>e</sup>`}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
+            const rows = Wod.generalRanking(state, cat).map(r => `<tr><td class="rank">${r.rank}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${r.places[w.id] === null ? '<span class="muted">—</span>' : `${r.places[w.id]}<sup>e</sup>`}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
             setTable(['RANG', 'PARTICIPANT', ...state.workouts.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS'], rows, 'Aucun participant dans cette catégorie.');
             return;
         }
         const w = state.workouts.find(x => x.id === rankingTab);
         heading(w.name, Wod.TYPE_LABELS[w.type]);
-        const rows = Wod.workoutRanking(state, w, cat).map(p => `<tr><td class="rank">${p.rank}</td><td><strong>${esc(Wod.athleteLabel(p.athlete))}</strong><div class="muted">Dossard ${esc(p.athlete.bib)}</div></td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+        const rows = Wod.workoutRanking(state, w, cat).map(p => `<tr><td class="rank">${p.rank}</td><td><strong>${esc(Wod.athleteLabel(p.athlete))}</strong><div class="muted">${esc(p.athlete.level ? Wod.group(p.athlete) : Wod.categoryLabel(Wod.category(p.athlete)))}</div></td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
         setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
     }
     let entryFormat = '';
@@ -323,7 +336,7 @@ var Wod;
         form.reset();
         const f = form.elements;
         $('entry-title').textContent = a ? 'Modifier l’inscription' : state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
-        $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${Wod.eventFormatLabel(state.format)}${a ? ` · Dossard ${a.bib}` : ''}`;
+        $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${Wod.eventFormatLabel(state.format)}`;
         $('entry-format-choice').hidden = state.format !== 'MIXED';
         $('entry-level-choice').hidden = !state.levels.length;
         $('entry-level-buttons').innerHTML = state.levels.map(l => `<button type="button" data-level="${esc(l)}" aria-pressed="false">${esc(l)}<small>${esc(LEVEL_HELP[l] ?? '')}</small></button>`).join('');
@@ -469,7 +482,7 @@ var Wod;
         const levels = Wod.LEVEL_PRESETS[v('levels')] ?? [];
         if (levels.join() !== target.levels.join()) {
             for (const a of target.athletes) {
-                const level = Wod.remapLevel(a.level, target.levels, levels);
+                const level = Wod.remapLevel(a.level, levels);
                 if (level)
                     a.level = level;
                 else
@@ -543,6 +556,8 @@ var Wod;
                 openWorkout();
             else if (d.action === 'import-athletes')
                 $('import-file').click();
+            else if (d.action === 'import-template-xlsx')
+                Modele.download(Modele.workbook(Wod.importColumns(state)), 'modele-participants-wod.xlsx');
             else if (d.action === 'import-template')
                 download(`modele-participants-wod.csv`, Wod.toCsv(Wod.importTemplate(state)), 'text/csv;charset=utf-8');
             else if (d.editAthlete)
