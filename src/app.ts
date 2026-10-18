@@ -61,6 +61,41 @@ namespace PaceApp {
     savedStatus(storageBlocked);
     try { selectedRaceId = localStorage.getItem(`${KEY}.event`) ?? ''; } catch { /* Le choix de vue ne bloque pas les données. */ }
   }
+  // Copie de la session sur le disque via server.py : elle survit à un navigateur qui efface ses données à la fermeture.
+  let diskPending: string | null = null, diskBusy = false, diskWarned = false;
+  function saveToDisk(raw: string): void {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+    diskPending = raw;
+    if (diskBusy) return;
+    diskBusy = true;
+    void (async () => {
+      while (diskPending !== null) {
+        const body = diskPending; diskPending = null;
+        try {
+          const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+          if (!response.ok) throw Error();
+          diskWarned = false;
+        } catch {
+          if (!diskWarned) { diskWarned = true; toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et exportez une sauvegarde.', true); }
+        }
+      }
+      diskBusy = false;
+    })();
+  }
+  async function syncDisk(): Promise<void> {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+    let disk: Pace.Store | null = null;
+    try {
+      const response = await fetch('/data', { cache: 'no-store' });
+      if (response.ok) disk = validateStore(await response.json());
+    } catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
+    if (disk && (loadedRaw === null || storageBlocked || disk.savedAt > state.savedAt)) {
+      const encoded = JSON.stringify(disk);
+      try { localStorage.setItem(KEY, encoded); loadedRaw = encoded; storageBlocked = false; } catch { /* La session reste utilisable à l’écran. */ }
+      state = disk; render(); savedStatus(storageBlocked);
+      toast('Données rechargées depuis la copie sur le disque.');
+    } else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt)) saveToDisk(loadedRaw);
+  }
   function persist(candidate: Pace.Store, allowRecovery = false, expectedRaw = loadedRaw): boolean {
     try {
       if (storageBlocked && !allowRecovery) throw Error('Stockage bloqué. Restaurez une sauvegarde avant de modifier la session.');
@@ -84,7 +119,7 @@ namespace PaceApp {
           validated.history.shift(); encoded = JSON.stringify(validated);
         }
       }
-      state = validated; loadedRaw = encoded; storageBlocked = false; savedStatus(); return true;
+      state = validated; loadedRaw = encoded; storageBlocked = false; savedStatus(); saveToDisk(encoded); return true;
     } catch (error) { savedStatus(true); toast(error instanceof Error ? `${error.message} Aucune modification appliquée.` : 'Échec de sauvegarde. Aucune modification appliquée.', true); return false; }
   }
   function assertDraftCurrent(form: HTMLFormElement): void {
@@ -123,7 +158,8 @@ namespace PaceApp {
   }
   function raceLabel(race: Pace.Race): string { return new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR'); }
   function eventFormatLabel(race: Pace.Race): string { return race.format === 'MIXED' ? 'Solo + Duo' : race.format === 'DUO' ? 'Duo' : 'Solo'; }
-  function departureText(entry: Pace.Entry): string { return entry.startedAt === null ? entry.scheduled || '—' : Pace.timeOfDay(entry.startedAt); }
+  // Départ affiché en hh:mm ; les secondes ne servent qu’au résultat.
+  function departureText(entry: Pace.Entry): string { return entry.startedAt === null ? entry.scheduled.slice(0, 5) || '—' : Pace.timeOfDay(entry.startedAt).slice(0, 5); }
   function resultRanking(): { entry: Pace.Entry; rank: number }[] {
     const visible = Pace.eventRankingFormats(currentRace(), raceEntries());
     return formatOptions.filter(option => visible.includes(option.key)).filter(option => activeFormat === 'all' || option.key === activeFormat).flatMap(option => Pace.rankingFor(state.session, option.key, currentRace()?.date ?? state.session.date));
@@ -282,8 +318,8 @@ namespace PaceApp {
     $('entry-format-choice').hidden = race.format !== 'MIXED';
     $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
     $<HTMLButtonElement>('delete-entry').hidden = !entry;
-    for (const name of ['name1', 'name2', 'scheduled'] as const) if (entry) field(form, name).value = entry[name];
-    if (entry?.startedAt !== null && entry?.startedAt !== undefined) field(form, 'scheduled').value = Pace.timeOfDay(entry.startedAt);
+    for (const name of ['name1', 'name2'] as const) if (entry) field(form, name).value = entry[name];
+    if (entry) field(form, 'scheduled').value = (entry.startedAt === null ? entry.scheduled : Pace.timeOfDay(entry.startedAt)).slice(0, 5);
     const lastKind = lastEntryFormats.get(race.id) ?? '';
     const lastFormat = lastKind.startsWith('DUO_') ? 'DUO' : lastKind.startsWith('SOLO_') ? 'SOLO' : '';
     const format = entry?.format ?? (race.format === 'MIXED' ? lastFormat : race.format);
@@ -303,7 +339,7 @@ namespace PaceApp {
       if (!race) throw Error('La course n’existe plus.');
       const scheduled = Pace.parseScheduled(get('scheduled')); if (!scheduled) throw Error('Renseignez l’heure de départ.');
       let startedAt = old?.startedAt ?? null;
-      if (startedAt !== null && scheduled !== Pace.timeOfDay(startedAt) && `${scheduled}:00` !== Pace.timeOfDay(startedAt)) startedAt = Pace.plannedAt(race, { ...old!, scheduled });
+      if (startedAt !== null && scheduled.slice(0, 5) !== Pace.timeOfDay(startedAt).slice(0, 5)) startedAt = Pace.plannedAt(race, { ...old!, scheduled });
       // Un temps total saisi reste fixe : l’arrivée suit le départ. Une heure d’arrivée saisie reste fixe : le temps est recalculé.
       const keepDuration = old?.resultMode === 'duration';
       const durationMs = old?.arrivedAt && startedAt !== null && !keepDuration ? old.arrivedAt - startedAt : old?.durationMs ?? null;
@@ -743,5 +779,5 @@ namespace PaceApp {
     catch { storageBlocked = true; savedStatus(true); toast('La sauvegarde externe est illisible. Exportez la session actuelle.', true); }
   });
   window.addEventListener('pageshow', tick); document.addEventListener('visibilitychange', tick);
-  load(); render(); window.setInterval(tick, 1000);
+  load(); render(); void syncDisk(); window.setInterval(tick, 1000);
 }
