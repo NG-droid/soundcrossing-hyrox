@@ -100,6 +100,8 @@ var Wod;
             if (t !== null && reps !== null)
                 throw Error('Saisissez soit le temps (terminé), soit les reps faites au cap, pas les deux.');
             if (t !== null) {
+                if (t <= 0)
+                    throw Error('Temps nul : saisissez le temps réalisé.');
                 if (w.capMinutes && t > w.capMinutes * 60000)
                     throw Error(`Ce temps dépasse le time cap de ${w.capMinutes} min : saisissez plutôt les reps faites.`);
                 return { timeMs: t };
@@ -126,6 +128,44 @@ var Wod;
         return reps === null ? null : { reps };
     }
     Wod.buildScore = buildScore;
+    // Règles métier d’un score, communes à la saisie, à la restauration d’une sauvegarde et aux modifications de WOD.
+    // Renvoie le problème en clair, ou null si le score respecte les réglages du WOD.
+    function scoreProblem(w, s) {
+        const has = (k) => s[k] !== undefined;
+        if (s.forfeit)
+            return has('timeMs') || has('reps') || has('kg') ? 'forfait et score en même temps' : null;
+        if (has('reps') && !Number.isInteger(s.reps))
+            return 'reps non entières';
+        if (w.type === 'time') {
+            if (has('kg'))
+                return 'charge en kg sur un WOD For Time';
+            if (has('timeMs') && has('reps'))
+                return 'temps et reps en même temps (soit le temps, soit les reps au cap)';
+            if (has('timeMs')) {
+                if (!(s.timeMs > 0))
+                    return 'temps nul';
+                if (w.capMinutes && s.timeMs > w.capMinutes * 60000)
+                    return `temps ${clock(s.timeMs)} au-delà du time cap de ${w.capMinutes} min`;
+                return null;
+            }
+            if (!has('reps'))
+                return 'score vide';
+            return w.totalReps && s.reps >= w.totalReps ? `${s.reps} reps au cap alors que le WOD en compte ${w.totalReps} (c’est un temps)` : null;
+        }
+        if (w.type === 'load')
+            return has('timeMs') || has('reps') ? 'temps ou reps sur un WOD de charge' : has('kg') ? null : 'score vide';
+        return has('timeMs') || has('kg') ? 'temps ou charge sur un WOD en reps' : has('reps') ? null : 'score vide';
+    }
+    Wod.scoreProblem = scoreProblem;
+    // Scores déjà saisis qui ne respecteraient plus les nouveaux réglages d’un WOD (cap réduit, reps au total…).
+    function workoutConflicts(c, w) {
+        const scores = c.scores[w.id] ?? {};
+        return c.athletes.flatMap(a => {
+            const s = scores[a.id], problem = s && scoreProblem(w, s);
+            return problem ? [`${athleteLabel(a)} : ${problem}`] : [];
+        });
+    }
+    Wod.workoutConflicts = workoutConflicts;
     function scoreText(w, s) {
         if (s?.forfeit)
             return 'Forfait';
@@ -169,7 +209,10 @@ var Wod;
     Wod.pointsFor = pointsFor;
     // Classement général d’une catégorie. Sans score (à saisir ou forfait) sur un WOD, l’athlète prend la dernière place
     // de la catégorie (méthode places) ou 0 point (méthode points). Tant qu’un score est à saisir, le classement est provisoire.
+    // Sans aucun WOD, il n’y a rien à classer : pas de classement ni de podium.
     function generalRanking(c, key) {
+        if (!c.workouts.length)
+            return [];
         const athletes = c.athletes.filter(a => group(a) === key);
         const byWod = c.workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, key).map(p => [p.athlete.id, p.rank])) }));
         const rows = athletes.map(a => {
@@ -378,7 +421,7 @@ var Wod;
         return { id: w.id, name: isText(w.name) && w.name.trim() ? w.name : `WOD ${line}`, description: isText(w.description) ? w.description : '', type: w.type,
             capMinutes: positive(w.capMinutes, `${where} : time cap`), totalReps: positive(w.totalReps, `${where} : reps au total`), repsPerRound: positive(w.repsPerRound, `${where} : reps par tour`) };
     }
-    function validateScore(value) {
+    function validateScore(value, strict) {
         const s = value;
         if (!s || typeof s !== 'object')
             throw Error('Score illisible.');
@@ -393,11 +436,16 @@ var Wod;
                 throw Error('Score invalide : reps non entières.');
             score[key] = x;
         }
-        if (s.forfeit === true)
+        if (s.forfeit === true) {
+            if (strict && Object.keys(score).length)
+                throw Error('forfait et score en même temps');
             return { forfeit: true };
+        }
         return score;
     }
-    function validate(value) {
+    // strict : sauvegarde fichier à restaurer. Chaque score doit aussi respecter les règles de son WOD (scoreProblem),
+    // comme à la saisie. Sans strict (données du navigateur), seule la forme est vérifiée pour ne jamais bloquer l’app.
+    function validate(value, strict = false) {
         const v = value;
         if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null || Array.isArray(v.scores))
             throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
@@ -412,7 +460,7 @@ var Wod;
         unique(workouts.map(w => w.id), 'WOD');
         // Un score ne garde que les WOD et participants qui existent encore.
         const athleteIds = new Set(athletes.map(a => a.id));
-        const scores = {};
+        const scores = {}, problems = [];
         for (const w of workouts) {
             const raw = v.scores[w.id];
             if (raw === undefined)
@@ -420,11 +468,26 @@ var Wod;
             if (!raw || typeof raw !== 'object' || Array.isArray(raw))
                 throw Error(`Scores du ${w.name} illisibles.`);
             const list = {};
-            for (const [id, s] of Object.entries(raw))
-                if (athleteIds.has(id))
-                    list[id] = validateScore(s);
+            for (const [id, s] of Object.entries(raw)) {
+                if (!athleteIds.has(id))
+                    continue;
+                try {
+                    const score = validateScore(s, strict), problem = strict ? scoreProblem(w, score) : null;
+                    if (problem)
+                        throw Error(problem);
+                    list[id] = score;
+                }
+                catch (error) {
+                    if (!strict)
+                        throw error;
+                    const a = athletes.find(x => x.id === id);
+                    problems.push(`${w.name}, ${athleteLabel(a)} : ${error.message}`);
+                }
+            }
             scores[w.id] = list;
         }
+        if (problems.length)
+            throw Error(`Sauvegarde refusée, ${problems.length} score(s) invalide(s) :\n${problems.slice(0, 6).join('\n')}${problems.length > 6 ? `\n… et ${problems.length - 6} autre(s).` : ''}`);
         return {
             id: isText(v.id) && v.id ? v.id : 'wod-1', title: isText(v.title) && v.title.trim() ? v.title : 'Compétition WOD', date: isText(v.date) ? v.date : '', format,
             method: v.method === 'points' ? 'points' : 'places',
@@ -433,17 +496,17 @@ var Wod;
     }
     Wod.validate = validate;
     // Accepte aussi l’ancienne sauvegarde de la version test (une seule compétition).
-    function validateStore(value) {
+    function validateStore(value, strict = false) {
         const v = value;
         const meta = { revision: v && isText(v.revision) ? v.revision : '', savedAt: v && typeof v.savedAt === 'number' && Number.isFinite(v.savedAt) ? v.savedAt : 0 };
         if (v && typeof v === 'object' && Array.isArray(v.events)) {
-            const events = v.events.map(validate);
+            const events = v.events.map(e => validate(e, strict));
             if (new Set(events.map(e => e.id)).size !== events.length)
                 throw Error('Deux événements ont le même identifiant : sauvegarde abîmée.');
             const selectedId = events.some(e => e.id === v.selectedId) ? String(v.selectedId) : events[0]?.id ?? '';
             return { version: 2, events, selectedId, ...meta };
         }
-        const single = validate(value);
+        const single = validate(value, strict);
         return { version: 2, events: [single], selectedId: single.id, ...meta };
     }
     Wod.validateStore = validateStore;
@@ -466,7 +529,7 @@ var Wod;
             sheets.push({ name: `${i + 1}. ${safe}`, rows });
         });
         const pending = pendingScores(c);
-        sheets.push({ name: 'Règles', rows: [['Règles du classement'], ...rulesText(c).map(r => [r]), [], [pending ? `Classement provisoire : ${pending} score(s) à saisir.` : 'Classement définitif : tous les scores sont saisis.']] });
+        sheets.push({ name: 'Règles', rows: [['Règles du classement'], ...rulesText(c).map(r => [r]), [], [!c.workouts.length ? 'Aucun WOD : pas encore de classement.' : pending ? `Classement provisoire : ${pending} score(s) à saisir.` : 'Classement définitif : tous les scores sont saisis.']] });
         return sheets;
     }
     Wod.exportRows = exportRows;

@@ -83,6 +83,9 @@ namespace Wod {
   }
   // Copie sur le disque via server.py, comme pour l’Hyrox : elle survit à un navigateur qui efface ses données.
   let diskPending: string | null = null, diskBusy = false, diskWarned = false;
+  // Révision de la copie disque sur laquelle on s’appuie : le serveur refuse l’écriture si elle a changé entre-temps.
+  let diskRevision: string | null = null;
+  const revisionOf = (raw: unknown): string => { const r = (raw as { revision?: unknown } | null)?.revision; return typeof r === 'string' ? r : ''; };
   function saveToDisk(raw: string): void {
     if (typeof fetch !== 'function' || location.protocol === 'file:') return;
     diskPending = raw;
@@ -92,10 +95,10 @@ namespace Wod {
       while (diskPending !== null) {
         const body = diskPending; diskPending = null;
         try {
-          const response = await fetch('/data/wod', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
-          if (response.status === 409) { toast('Une version WOD plus récente est enregistrée sur le disque (autre navigateur). Rechargez la page.'); continue; }
+          const response = await fetch('/data/wod', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Base-Revision': diskRevision ?? '' }, body });
+          if (response.status === 409) { toast('La copie WOD sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.'); continue; }
           if (!response.ok) throw Error();
-          diskWarned = false;
+          diskRevision = revisionOf(JSON.parse(body)); diskWarned = false;
         } catch {
           if (!diskWarned) { diskWarned = true; toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et faites une sauvegarde fichier.'); }
         }
@@ -108,7 +111,8 @@ namespace Wod {
     let disk: Store | null = null;
     try {
       const response = await fetch('/data/wod', { cache: 'no-store' });
-      if (response.ok) disk = validateStore(await response.json());
+      if (response.status === 404) diskRevision = '';
+      if (response.ok) { const raw: unknown = await response.json(); diskRevision = revisionOf(raw); disk = validateStore(raw); }
     } catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
     if (disk && (loadedRaw === null || storageBlocked || (disk.savedAt ?? 0) > (store.savedAt ?? 0))) {
       const encoded = JSON.stringify(disk);
@@ -120,6 +124,18 @@ namespace Wod {
       toast('Données WOD rechargées depuis la copie sur le disque.');
     } else if (loadedRaw !== null && !storageBlocked && (!disk || (disk.savedAt ?? 0) < (store.savedAt ?? 0))) saveToDisk(loadedRaw);
   }
+  // Comme dans l’Hyrox : chaque formulaire retient la version de ce qu’il modifie à l’ouverture.
+  // Si une autre fenêtre l’a changé entre-temps, l’enregistrement est refusé au lieu d’écraser la correction récente.
+  const drafts = new WeakMap<HTMLFormElement, string>();
+  function draftVersion(kind: 'athlete' | 'workout' | 'event', id: string): string {
+    if (kind === 'event' && !id) return 'nouvel événement';
+    const item = kind === 'athlete' ? state.athletes.find(a => a.id === id) : kind === 'workout' ? state.workouts.find(w => w.id === id)
+      : { title: state.title, date: state.date, method: state.method, athletes: state.athletes.length, scored: hasAnyScore(state) };
+    return JSON.stringify({ event: state.id, levels: state.levels, format: state.format, item: item ?? null });
+  }
+  function openDraft(form: HTMLFormElement, kind: 'athlete' | 'workout' | 'event', id: string): void { drafts.set(form, draftVersion(kind, id)); }
+  function draftChanged(form: HTMLFormElement, kind: 'athlete' | 'workout' | 'event', id: string): boolean { return drafts.get(form) !== draftVersion(kind, id); }
+  const STALE_FORM = 'Les données de ce formulaire ont changé dans une autre fenêtre. Fermez-le puis rouvrez-le pour utiliser la version à jour.';
   function savedStatus(error = false): void {
     const element = $('save-status'); element.classList.toggle('error', error);
     element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
@@ -358,6 +374,7 @@ namespace Wod {
     wodPicker([{ key: 'general', label: 'Classement général', sub: state.method === 'places' ? 'Somme des places' : 'Total des points' }, ...state.workouts.map(wodTab)], rankingTab, 'rank-tab');
     chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => groupChip(c, rankingLevel)), rankingCat, 'rank-cat');
     if (!rankingCat) { heading('Classements', ''); setTable([], [], 'Ajoutez des participants et des scores.'); return; }
+    if (!state.workouts.length) { heading('Classements', 'Pas de classement ni de podium sans épreuve.'); setTable([], [], 'Ajoutez au moins un WOD (onglet 2) pour obtenir un classement.'); return; }
     const cat = rankingCat;
     if (rankingTab === 'general') {
       const pending = pendingScores(state, cat);
@@ -411,7 +428,7 @@ namespace Wod {
     entryLevel = a?.level && state.levels.includes(a.level) ? a.level : state.levels.length === 1 ? state.levels[0]! : '';
     f.id!.value = a?.id ?? ''; f.name1!.value = a?.name1 ?? ''; f.name2!.value = a?.name2 ?? '';
     entryFormat = a?.format ?? (state.format === 'MIXED' ? '' : state.format); gender1 = a?.gender1 ?? ''; gender2 = a?.gender2 ?? '';
-    $('delete-entry').hidden = !a;
+    $('delete-entry').hidden = !a; openDraft(form, 'athlete', a?.id ?? '');
     $('entry-error').textContent = ''; syncEntryForm(); $<HTMLDialogElement>('entry-dialog').showModal();
   }
   function submitAthlete(event: Event): void {
@@ -424,8 +441,12 @@ namespace Wod {
     if (!gender1) return error('Choisissez H ou F pour le participant 1.');
     if (entryFormat === 'DUO' && !gender2) return error('Choisissez H ou F pour le participant 2.');
     if (entryFormat === 'DUO' && !v('name2')) return error('Renseignez le nom du participant 2.');
+    if (draftChanged(event.target as HTMLFormElement, 'athlete', v('id'))) return error(STALE_FORM);
     const old = state.athletes.find(a => a.id === v('id'));
     const athlete: Athlete = { id: old?.id ?? uid(), bib: old?.bib ?? nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '', ...(state.levels.length ? { level: entryLevel } : {}) };
+    // Changer le niveau ou la catégorie d’un athlète déjà noté le déplace dans un autre classement : confirmé.
+    const scored = old && state.workouts.some(w => hasScore(w, state.scores[w.id]?.[old.id]));
+    if (old && scored && group(old) !== group(athlete) && !confirm(`${athleteLabel(old)} a déjà des scores.\n\nIl passera de « ${group(old)} » à « ${group(athlete)} », avec ses scores. Continuer ?`)) return;
     const i = state.athletes.findIndex(a => a.id === athlete.id);
     if (i >= 0) state.athletes[i] = athlete; else state.athletes.push(athlete);
     if (!save()) { $('entry-error').textContent = 'Non enregistré : réessayez.'; return; }
@@ -457,7 +478,7 @@ namespace Wod {
     $('workout-title').textContent = w ? 'Modifier le WOD' : 'Ajouter un WOD';
     f.id!.value = w?.id ?? ''; f.name!.value = w?.name ?? `WOD ${state.workouts.length + 1}`; (form.elements.namedItem('type') as RadioNodeList).value = w?.type ?? 'time';
     f.description!.value = w?.description ?? ''; f.capMinutes!.value = String(w?.capMinutes ?? ''); f.totalReps!.value = String(w?.totalReps ?? ''); f.repsPerRound!.value = String(w?.repsPerRound ?? '');
-    $('workout-error').textContent = ''; syncWorkoutForm(); $<HTMLDialogElement>('workout-dialog').showModal(); f.name!.focus();
+    $('workout-error').textContent = ''; openDraft(form, 'workout', w?.id ?? ''); syncWorkoutForm(); $<HTMLDialogElement>('workout-dialog').showModal(); f.name!.focus();
   }
   function submitWorkout(event: Event): void {
     event.preventDefault();
@@ -466,9 +487,16 @@ namespace Wod {
     const n = (k: string): number | null => { const x = Number(v(k)); return v(k) && x > 0 ? x : null; };
     const type = v('type') as ScoreType;
     const id = v('id') || uid();
+    if (draftChanged(event.target as HTMLFormElement, 'workout', v('id'))) { $('workout-error').textContent = STALE_FORM; return; }
     const old = state.workouts.find(w => w.id === id);
     if (old && old.type !== type && Object.keys(state.scores[id] ?? {}).length && !confirm('Changer le type efface les scores déjà saisis pour ce WOD. Continuer ?')) return;
     const workout: Workout = { id, name: v('name'), description: v('description'), type, capMinutes: n('capMinutes'), totalReps: type === 'time' ? n('totalReps') : null, repsPerRound: type === 'amrap' ? n('repsPerRound') : null };
+    // Cap, reps au total… : un score déjà saisi qui ne respecterait plus les réglages bloque la modification.
+    const conflicts = old && old.type === type ? workoutConflicts(state, workout) : [];
+    if (conflicts.length) {
+      $('workout-error').textContent = `Non enregistré : ${conflicts.length} score(s) ne respectent plus ces réglages. Corrigez-les d’abord dans Scores, ou gardez les réglages actuels. ${conflicts.slice(0, 3).join(' · ')}${conflicts.length > 3 ? ' …' : ''}`;
+      return;
+    }
     if (old && old.type !== type) delete state.scores[id];
     const i = state.workouts.findIndex(w => w.id === id);
     if (i >= 0) state.workouts[i] = workout; else state.workouts.push(workout);
@@ -487,10 +515,24 @@ namespace Wod {
     form.querySelectorAll<HTMLInputElement>('input[name="method"]').forEach(i => { i.disabled = locked; });
     $('method-lock').hidden = !locked;
     radio('levels').value = edit ? Object.keys(LEVEL_PRESETS).find(k => LEVEL_PRESETS[k]!.join() === state.levels.join()) ?? 'none' : 'none';
+    // Les niveaux ne changent plus une fois les scores commencés : un RX ne devient jamais Scaled sans qu’on le décide.
+    form.querySelectorAll<HTMLInputElement>('input[name="levels"]').forEach(i => { i.disabled = locked; });
+    $('levels-lock').hidden = !locked;
+    openDraft(form, 'event', edit ? state.id : ''); syncEventForm();
     $('event-dialog-title').textContent = edit ? 'Modifier l’événement' : 'Créer un événement';
     $('save-event-button').textContent = edit ? 'Enregistrer' : 'Créer l’événement';
     $('delete-event').hidden = !edit;
     $<HTMLDialogElement>('session-dialog').showModal(); f.title!.focus();
+  }
+  // Ajouter des niveaux à un événement qui a déjà des inscrits : on choisit leur niveau, rien n’est deviné.
+  function syncEventForm(): void {
+    const form = $<HTMLFormElement>('session-form'), id = (form.elements.namedItem('id') as HTMLInputElement).value;
+    const levels = LEVEL_PRESETS[(form.elements.namedItem('levels') as RadioNodeList).value] ?? [];
+    const ask = !!id && !state.levels.length && levels.length > 0 && state.athletes.length > 0;
+    $('levels-assign').hidden = !ask;
+    $('levels-assign-count').textContent = String(state.athletes.length);
+    const buttons = $('levels-assign-buttons');
+    if (ask === !buttons.innerHTML) buttons.innerHTML = ask ? levels.map(l => `<label><input type="radio" name="assignLevel" value="${esc(l)}" required><span>${esc(l)}<small>${esc(LEVEL_HELP[l] ?? '')}</small></span></label>`).join('') : '';
   }
   function submitEvent(event: Event): void {
     event.preventDefault();
@@ -498,6 +540,7 @@ namespace Wod {
     const v = (k: string): string => String(data.get(k) ?? '').trim();
     const format = v('format') as EventFormat;
     if (!['SOLO', 'DUO', 'MIXED'].includes(format)) { $('session-error').textContent = 'Choisissez Solo, Duo ou Solo + Duo.'; return; }
+    if (draftChanged(event.target as HTMLFormElement, 'event', v('id'))) { $('session-error').textContent = STALE_FORM; return; }
     const existing = store.events.find(e => e.id === v('id'));
     if (existing && format !== 'MIXED' && existing.athletes.some(a => a.format !== format)) {
       $('session-error').textContent = `Des inscriptions ${format === 'SOLO' ? 'Duo' : 'Solo'} existent déjà : gardez Solo + Duo ou supprimez-les d’abord.`; return;
@@ -507,9 +550,12 @@ namespace Wod {
     if (!(existing && hasAnyScore(existing))) target.method = v('method') === 'points' ? 'points' : 'places';
     // Changer de niveaux : « un seul niveau » les retire.
     const levels = LEVEL_PRESETS[v('levels')] ?? [];
-    if (levels.join() !== target.levels.join()) {
+    if (levels.join() !== target.levels.join() && !(existing && hasAnyScore(existing))) {
+      const assign = v('assignLevel');
+      if (target.athletes.length && levels.length && !target.levels.length && !levels.includes(assign)) { $('session-error').textContent = 'Choisissez le niveau des participants déjà inscrits.'; return; }
+      if (target.athletes.length && !levels.length && !confirm(`Passer à un seul niveau ?\n\nLes ${target.athletes.length} inscrit(s) Scaled et RX seront classés ensemble.`)) return;
       for (const a of target.athletes) {
-        const level = remapLevel(a.level, levels);
+        const level = levels.length && !target.levels.length ? assign : remapLevel(a.level, levels);
         if (level) a.level = level; else delete a.level;
       }
       target.levels = [...levels];
@@ -592,6 +638,7 @@ namespace Wod {
     $('workout-form').addEventListener('submit', submitWorkout);
     $('workout-form').addEventListener('change', syncWorkoutForm);
     $('session-form').addEventListener('submit', submitEvent);
+    $('session-form').addEventListener('change', syncEventForm);
     $('edit-competition').addEventListener('click', () => openEvent(true));
     $('new-event-button').addEventListener('click', () => openEvent(false));
     $('no-event-create').addEventListener('click', () => openEvent(false));
@@ -606,14 +653,15 @@ namespace Wod {
       if (!file) return;
       try {
         if (file.size > 15 * 1024 * 1024) throw Error('Sauvegarde trop volumineuse.');
-        const imported = validateStore(JSON.parse(await file.text()));
+        // Mêmes règles qu’à la saisie : temps nul, au-delà du cap, temps et reps ensemble… sont refusés.
+        const imported = validateStore(JSON.parse(await file.text()), true);
         const athletes = imported.events.reduce((n, ev) => n + ev.athletes.length, 0);
         if (!confirm(`Restaurer cette sauvegarde (${imported.events.length} événement(s), ${athletes} inscription(s)) ?\n\nLes données WOD actuelles seront remplacées. Une sauvegarde des données actuelles sera téléchargée avant.`)) return;
         if (store.events.length) exportBackup();
         store = imported; selectEvent(imported.selectedId); rememberEvent();
         if (!save(true)) return;
         render(); $<HTMLDialogElement>('settings-dialog').close(); toast('Sauvegarde restaurée.');
-      } catch (error) { toast((error as Error).message); }
+      } catch (error) { alert((error as Error).message); }
     });
     $<HTMLInputElement>('import-file').addEventListener('change', e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; input.value = ''; if (file) void importFile(file); });
     $('no-event-demo').addEventListener('click', loadDemo);

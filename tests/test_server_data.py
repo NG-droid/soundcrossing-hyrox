@@ -52,8 +52,11 @@ class ServerDataTest(unittest.TestCase):
         self.server.wait()
         self.data.cleanup()
 
-    def put(self, body, origin=None, kind="application/json", path="/data"):
-        request = Request(f"{self.url}{path}", data=body, method="PUT", headers={"Origin": origin or self.url, "Content-Type": kind})
+    def put(self, body, origin=None, kind="application/json", path="/data", base=""):
+        headers = {"Origin": origin or self.url, "Content-Type": kind}
+        if base is not None:
+            headers["X-Base-Revision"] = base
+        request = Request(f"{self.url}{path}", data=body, method="PUT", headers=headers)
         try:
             return urlopen(request, timeout=5).status
         except HTTPError as error:
@@ -62,30 +65,35 @@ class ServerDataTest(unittest.TestCase):
     def test_saved_session_is_read_back_and_previous_kept(self):
         with self.assertRaises(HTTPError):
             urlopen(f"{self.url}/data", timeout=2)
-        self.assertEqual(self.put(json.dumps({"session": {"n": 1}, "savedAt": 1}).encode()), 204)
-        self.assertEqual(self.put(json.dumps({"session": {"n": 2}, "savedAt": 2}).encode()), 204)
+        self.assertEqual(self.put(json.dumps({"session": {"n": 1}, "revision": "r1"}).encode()), 204)
+        self.assertEqual(self.put(json.dumps({"session": {"n": 2}, "revision": "r2"}).encode(), base="r1"), 204)
         self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["session"], {"n": 2})
         previous = Path(self.data.name) / "session-precedente.json"
         self.assertEqual(json.loads(previous.read_text())["session"], {"n": 1})
 
-    def test_older_version_never_replaces_a_newer_one(self):
-        self.assertEqual(self.put(json.dumps({"session": {"n": "récent"}, "savedAt": 200}).encode()), 204)
-        self.assertEqual(self.put(json.dumps({"session": {"n": "ancien"}, "savedAt": 100}).encode()), 409)
-        self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["session"], {"n": "récent"})
+    def test_stale_copy_never_replaces_the_current_one_even_with_a_newer_time(self):
+        # Les deux navigateurs partent de r1. Le premier enregistre r2 ; le second, plus tard, arrive avec une copie périmée.
+        self.assertEqual(self.put(json.dumps({"session": {"n": "départ"}, "revision": "r1", "savedAt": 100}).encode()), 204)
+        self.assertEqual(self.put(json.dumps({"session": {"n": "ajout A"}, "revision": "r2", "savedAt": 200}).encode(), base="r1"), 204)
+        self.assertEqual(self.put(json.dumps({"session": {"n": "périmé B"}, "revision": "r3", "savedAt": 300}).encode(), base="r1"), 409)
+        self.assertEqual(self.put(json.dumps({"session": {"n": "sans révision"}, "revision": "r4"}).encode(), base=None), 428)
+        self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["session"], {"n": "ajout A"})
 
     def test_wod_has_its_own_disk_copy(self):
-        self.assertEqual(self.put(json.dumps({"session": {}, "savedAt": 5}).encode()), 204)
+        self.assertEqual(self.put(json.dumps({"session": {}, "revision": "h1"}).encode()), 204)
         self.assertEqual(self.put(json.dumps({"session": {}}).encode(), path="/data/wod"), 400)
-        self.assertEqual(self.put(json.dumps({"version": 2, "events": [], "savedAt": 1}).encode(), path="/data/wod"), 204)
+        self.assertEqual(self.put(json.dumps({"version": 2, "events": [], "revision": "w1"}).encode(), path="/data/wod"), 204)
         self.assertEqual(json.load(urlopen(f"{self.url}/data/wod", timeout=2))["events"], [])
-        self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["savedAt"], 5)
+        self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["revision"], "h1")
 
-    def test_parallel_writes_keep_the_newest_and_leave_no_temporary_file(self):
-        bodies = [json.dumps({"session": {"n": n}, "savedAt": n}).encode() for n in range(1, 31)]
+    def test_parallel_writes_from_the_same_start_keep_only_one_and_leave_no_temporary_file(self):
+        bodies = [json.dumps({"session": {"n": n}, "revision": f"r{n}"}).encode() for n in range(1, 31)]
         with ThreadPoolExecutor(max_workers=10) as pool:
             codes = list(pool.map(self.put, bodies))
-        self.assertTrue(set(codes) <= {204, 409})
-        self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["savedAt"], 30)
+        self.assertEqual(codes.count(204), 1)
+        self.assertEqual(codes.count(409), 29)
+        winner = codes.index(204) + 1
+        self.assertEqual(json.load(urlopen(f"{self.url}/data", timeout=2))["revision"], f"r{winner}")
         self.assertEqual([p.name for p in Path(self.data.name).glob("*.tmp")], [])
 
     def test_other_sites_and_invalid_bodies_are_refused(self):
