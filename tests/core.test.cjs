@@ -473,24 +473,26 @@ test('arrival correction preserves long results and guides new overnight arrival
   const capture = P.arrivalNow(r,e,new Date(`${r.date}T10:00:00`).getTime());
   assert.equal(P.calculateResultArrival(r,e,capture.arrivalTime,capture).arrivedAt,capture.arrivedAt);
 });
-test('Pro et Open dans un même événement : import, classements, podium et CSV séparés', () => {
-  const r = P.validateRace(race({ levels: ['Pro', 'Open'] })), map = { bib: -1, name1: 1, name2: -1, format: 0, category: -1, level: 4, scheduled: 2, duration: 3 };
-  assert.deepEqual(Array.from(r.levels), ['Pro', 'Open']);
+test('Open et Pro dans un même événement : import, classements, podium et CSV séparés', () => {
+  const r = P.validateRace(race({ levels: ['Open', 'Pro'] })), map = { bib: -1, name1: 1, name2: -1, format: 0, category: -1, level: 4, scheduled: 2, duration: 3 };
+  assert.deepEqual(Array.from(r.levels), ['Open', 'Pro']);
+  assert.deepEqual(Array.from(P.validateRace(race({ levels: ['Pro', 'Open'] })).levels), ['Open', 'Pro']);
   assert.deepEqual(Array.from(P.validateRace(race()).levels), []);
-  assert.throws(() => P.validateRace(race({ levels: ['RX'] })), /Pro et Open/);
+  assert.throws(() => P.validateRace(race({ levels: ['RX'] })), /Open et Pro/);
   const rows = [['Solo H', 'A', '09:00', '01:00:00', 'Pro'], ['Solo H', 'B', '09:05', '00:58:00', 'open'], ['Solo H', 'C', '09:10', '00:59:00', 'Pro']];
   const result = P.importRows(rows, map, [], r); assert.equal(result.filter(row => row.error).length, 0);
-  assert.equal(P.importRows([['Solo H', 'D', '09:00', '', '']], map, [], r)[0].error, 'Précisez le niveau : Pro ou Open.');
+  assert.equal(P.importRows([['Solo H', 'D', '09:00', '', '']], map, [], r)[0].error, 'Précisez le niveau : Open ou Pro.');
   assert.match(P.importRows([['Solo H', 'D', '09:00', '', 'RX']], map, [], r)[0].error, /inconnu/);
   const s = P.validateSession(raceSession(r, result.map(row => row.entry)));
   assert.deepEqual(Array.from(P.rankingFor(s, 'H', r.date, 'Pro'), row => `${row.entry.name1}:${row.rank}`), ['C:1', 'A:2']);
   assert.deepEqual(Array.from(P.rankingFor(s, 'H', r.date, 'Open'), row => `${row.entry.name1}:${row.rank}`), ['B:1']);
   assert.equal(P.rankingFor(s, 'H', r.date).length, 0);
-  assert.deepEqual(Array.from(P.eventRankingGroups(r, s.entries), g => `${g.level}:${g.format}`), ['Pro:H', 'Pro:F', 'Pro:HH', 'Pro:FF', 'Pro:HF', 'Open:H', 'Open:F', 'Open:HH', 'Open:FF', 'Open:HF']);
+  assert.deepEqual(Array.from(P.eventRankingGroups(r, s.entries), g => `${g.level}:${g.format}`), ['Open:H', 'Open:F', 'Open:HH', 'Open:FF', 'Open:HF', 'Pro:H', 'Pro:F', 'Pro:HH', 'Pro:FF', 'Pro:HF']);
   assert.equal(P.podiumFor(s, r, 'H', 'Open')[0].entries[0].name1, 'B');
   const csv = P.finalResultsCSV(s, r).split('\r\n');
   assert.match(csv[0], /^﻿"Rang";"Niveau";"Format"/);
-  assert.match(csv[1], /^"1";"Pro";"Solo H";"C"/);
+  assert.match(csv[1], /^"1";"Open";"Solo H";"B"/);
+  assert.match(csv[2], /^"1";"Pro";"Solo H";"C"/);
   assert.equal(P.groupLabel('Pro', 'Duo HH'), 'Pro · Duo HH');
-  assert.throws(() => P.validateEntry(entry({ level: 'RX' })), /Pro ou Open/);
+  assert.throws(() => P.validateEntry(entry({ level: 'RX' })), /Open ou Pro/);
 });

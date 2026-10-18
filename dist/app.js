@@ -35,7 +35,7 @@ var PaceApp;
         { key: 'name1', label: 'Participant 1', aliases: ['participant 1', 'participant1', 'nom', 'nom 1', 'nom1', 'participant', 'athlete', 'name'] },
         { key: 'name2', label: 'Participant 2', aliases: ['participant 2', 'participant2', 'nom 2', 'nom2', 'partenaire', 'binome'] },
         { key: 'format', label: 'Format', aliases: ['format', 'type', 'categorie', 'catégorie'] },
-        { key: 'level', label: 'Niveau (Pro / Open)', aliases: ['niveau', 'level', 'division'] },
+        { key: 'level', label: 'Niveau (Open / Pro)', aliases: ['niveau', 'level', 'division'] },
         { key: 'scheduled', label: 'Heure de départ', aliases: ['heure de depart', 'heure de passage', 'passage', 'heure', 'depart', 'heure depart'] },
     ];
     function toast(message, error = false) {
@@ -378,7 +378,7 @@ var PaceApp;
             const category = Pace.categoryFromGenders(selectedEntryFormat, selectedGender1, selectedGender2);
             const race = state.session.races.find(r => r.id === field($('entry-form'), 'raceId').value);
             if (race?.levels.length && !selectedLevel)
-                throw Error('Choisissez le niveau : Pro ou Open.');
+                throw Error('Choisissez le niveau : Open ou Pro.');
             $('registration-category').textContent = `Format : ${Pace.groupLabel(race?.levels.length ? selectedLevel : '', selectedEntryFormat === 'DUO' ? `Duo ${category}` : `Solo ${category}`)}`;
             $('registration-category').classList.add('complete');
         }
@@ -525,7 +525,7 @@ var PaceApp;
             Pace.assertRaceFormat(race, format);
             const category = Pace.categoryFromGenders(format, selectedGender1, selectedGender2);
             if (race.levels.length && !race.levels.includes(selectedLevel))
-                throw Error('Choisissez le niveau : Pro ou Open.');
+                throw Error('Choisissez le niveau : Open ou Pro.');
             const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, level: race.levels.length ? selectedLevel : '', gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
             if (state.session.entries.some(e => e.id !== entry.id && identity(e) === identity(entry)))
                 throw Error('Ce participant ou duo est déjà inscrit à cette course.');
@@ -884,7 +884,7 @@ var PaceApp;
         const kept = rows.filter(row => race.format === 'MIXED' || row[0].startsWith(race.format === 'DUO' ? 'Duo' : 'Solo'));
         if (!race.levels.length)
             return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ'], ...kept];
-        return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Niveau'], ...kept.map((row, i) => [...row, i % 2 ? 'Open' : 'Pro'])];
+        return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Niveau'], ...kept.map((row, i) => [...row, i % 2 ? 'Pro' : 'Open'])];
     }
     // Modèle CSV pour Excel en français : séparateur « ; », accents conservés.
     function exportCsvTemplate() {
@@ -928,7 +928,7 @@ var PaceApp;
             if (!race)
                 throw Error('Créez d’abord une course.');
             importRaceId = race.id;
-            $('import-course').textContent = `Ajouter à « ${race.title} » (${raceLabel(race)}). Formats acceptés : ${race.format === 'DUO' ? 'Duo HH/FF/HF' : race.format === 'SOLO' ? 'Solo H/F' : 'Solo H/F et Duo HH/FF/HF'}.${race.levels.length ? ' Colonne Niveau : Pro ou Open.' : ''} Première ligne du fichier : noms des colonnes.`;
+            $('import-course').textContent = `Ajouter à « ${race.title} » (${raceLabel(race)}). Formats acceptés : ${race.format === 'DUO' ? 'Duo HH/FF/HF' : race.format === 'SOLO' ? 'Solo H/F' : 'Solo H/F et Duo HH/FF/HF'}.${race.levels.length ? ' Colonne Niveau : Open ou Pro.' : ''} Première ligne du fichier : noms des colonnes.`;
             if (file.size > 10 * 1024 * 1024)
                 throw Error('Fichier trop volumineux (maximum 10 Mo).');
             if (!/\.(xlsx|xls|csv|tsv)$/i.test(file.name))
