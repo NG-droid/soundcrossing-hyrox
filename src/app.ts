@@ -183,26 +183,29 @@ namespace PaceApp {
   function nameCell(e: Pace.Entry): string {
     const names = `<span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}`;
     // Dans l’onglet Scores, tout se fait sur la ligne : le nom n’ouvre pas de fenêtre.
-    return view === 'scores' ? `<td><span class="score-name duo-names">${names}</span></td>` : `<td><button class="names-button duo-names" data-action="result" data-id="${esc(e.id)}">${names}</button></td>`;
+    return view === 'scores' ? `<td><span class="score-name duo-names">${names}</span></td>` : `<td><button class="names-button duo-names" data-action="${view === 'participants' ? 'edit' : 'result'}" data-id="${esc(e.id)}">${names}</button></td>`;
   }
   function arrivalText(e: Pace.Entry): string {
     return e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`;
   }
   const PEN = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>';
   const TRASH = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
-  const CLOCK = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
   function resultCells(e: Pace.Entry): string {
     return `<td class="recorded-time">${arrivalText(e)}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actionButton('result', e.id, e.status === 'abandoned' || e.status === 'withdrawn' ? 'Modifier le statut' : e.arrivedAt === null ? 'Saisir le résultat' : 'Corriger')}${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}${actionButton('edit', e.id, '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>', 'icon', `Modifier l’inscription de ${label(e)}`)}</div></td>`;
+  }
+  // Onglet Participants : on gère l’inscription (modifier, supprimer) ; les résultats se saisissent dans Scores.
+  function participantCells(e: Pace.Entry): string {
+    return `<td><div class="row-actions">${actionButton('edit', e.id, PEN, 'icon', `Modifier l’inscription de ${label(e)}`)}${actionButton('delete', e.id, TRASH, 'icon', `Supprimer l’inscription de ${label(e)}`)}</div></td>`;
   }
   // Onglet Scores : l’heure d’arrivée se tape dans la case, le reste se fait avec les boutons de la ligne.
   function scoreCells(e: Pace.Entry): string {
     const out = e.status === 'abandoned' || e.status === 'withdrawn';
-    const arrival = `<div class="arrival-entry">${Saisie.box(`data-arrival="${esc(e.id)}"`, e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt), `Heure d’arrivée de ${esc(label(e))}`)}${e.status === 'finished' || out ? '' : actionButton('now', e.id, `${CLOCK}Maintenant`, '', `Arrivée maintenant pour ${label(e)}`)}</div>`;
+    // Même case d’heure que l’heure de départ de l’inscription, avec les secondes.
+    const arrival = `<div class="arrival-entry"><input class="score-time" type="time" step="1" data-arrival="${esc(e.id)}" value="${e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt)}" aria-label="Heure d’arrivée de ${esc(label(e))}"></div>`;
     const actions = [
       e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : '',
       out ? actionButton('reinstate', e.id, 'Remettre en course') : actionButton('withdraw', e.id, 'Forfait'),
-      e.status === 'finished' ? actionButton('clear', e.id, TRASH, 'icon', `Effacer le résultat de ${label(e)}`) : '',
-      actionButton('edit', e.id, PEN, 'icon', `Modifier l’inscription de ${label(e)}`)
+      e.status === 'finished' ? actionButton('clear', e.id, TRASH, 'icon', `Effacer le résultat de ${label(e)}`) : ''
     ].join('');
     return `<td>${arrival}</td><td class="time-cell">${out ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actions}</div></td>`;
   }
@@ -235,11 +238,14 @@ namespace PaceApp {
     for (const [id, count] of [['nav-count', entries.length], ['nav-live', running], ['nav-results', finished], ['nav-scores', finished], ['stat-teams', entries.length], ['stat-running', running], ['stat-finished', finished]] as const) $(id).textContent = String(count);
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => { const active = b.dataset.view === (view === 'live' ? 'participants' : view); b.classList.toggle('active', active); b.setAttribute('aria-current', active ? 'page' : 'false'); });
     $('view-title').innerHTML = `${view === 'results' ? 'Classements du jour' : view === 'live' ? 'Arrivées à compléter' : view === 'scores' ? 'Saisie des scores' : 'Participants du jour'} <span id="list-count"></span>`;
-    $('view-description').textContent = view === 'scores' ? 'Tapez l’heure d’arrivée (hh:mm:ss) puis Entrée : le temps total se calcule et la case suivante est prête. « Maintenant » met l’heure actuelle.' : view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
+    $('view-description').textContent = view === 'scores' ? 'Tapez l’heure d’arrivée (heures, minutes, secondes) puis Entrée : le temps total se calcule et la case suivante est prête.' : view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
     $('pending-filter').classList.toggle('active', view === 'live'); $('pending-filter').setAttribute('aria-pressed', String(view === 'live'));
     $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${option.key === 'all' ? '' : `chip-fmt-${option.key}`} ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
     $('format-chips').hidden = !race;
     $('rank-heading').hidden = view !== 'results';
+    $('arrival-heading').hidden = $('total-heading').hidden = view === 'participants';
+    $('list-add').hidden = view !== 'participants';
+    $('show-podium-button').hidden = view === 'participants' || view === 'live';
     $('rank-heading').textContent = finalResults ? 'RANG' : 'RANG PROVISOIRE';
     $<HTMLSelectElement>('sort').disabled = view === 'results'; $('sort').hidden = view === 'results';
     const list = filtered(); $('list-count').textContent = String(list.length);
@@ -261,8 +267,8 @@ namespace PaceApp {
     let previousFormat = '';
     $('entries-body').innerHTML = list.map(e => {
       const key = `${e.level}:${Pace.formatKey(e)}`, group = view === 'results' && (activeFormat === 'all' || !!race?.levels.length && !activeLevel) && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.groupLabel(e.level, Pace.formatLabel(e)))}</th></tr>` : ''; previousFormat = key;
-      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}${nameCell(e)}<td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td>${view === 'scores' ? scoreCells(e) : resultCells(e)}</tr>`;
-    }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : 6}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
+      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}${nameCell(e)}<td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td>${view === 'scores' ? scoreCells(e) : view === 'participants' ? participantCells(e) : resultCells(e)}</tr>`;
+    }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : view === 'participants' ? 4 : 6}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
     const focusedEntries = view === 'results' ? list : entries;
     if (!focusedEntries.some(e => e.id === focusId)) focusId = focusedEntries.find(e => !Pace.isResolved(e))?.id ?? focusedEntries.at(-1)?.id ?? '';
     if (photoId) renderPhoto();
@@ -513,7 +519,7 @@ namespace PaceApp {
         Object.assign(current, Pace.setOutcome(current, status));
       }, form)) { $<HTMLDialogElement>('result-dialog').close(); toast(`${caption} enregistré. Vous pouvez annuler cette modification.`); }
     };
-    if (entry.status === 'finished') ask(`${caption} ?`, 'Le temps et l’arrivée seront retirés du classement. L’inscription est conservée ; Annuler permet de rétablir le résultat.', apply, caption);
+    if (status === 'withdrawn') ask(`Confirmer le forfait ou l’abandon de ${label(entry)} ?`, entry.status === 'finished' ? 'Le temps et l’arrivée seront retirés du classement. L’inscription est conservée ; Annuler permet de rétablir le résultat.' : 'L’inscription est conservée, sans temps ni classement. « Remettre en course » ou Annuler permet de revenir en arrière.', apply, 'Confirmer le forfait');
     else apply();
   }
   function openPhoto(id: string): void {
@@ -734,10 +740,10 @@ namespace PaceApp {
   // Après un enregistrement, le tableau est redessiné : on remet le curseur dans la case où il était.
   function keepFocus(save: () => boolean, nextId = ''): void {
     const active = document.activeElement as HTMLInputElement | null;
-    const id = nextId || active?.dataset.arrival || '', caret = nextId ? null : active?.selectionStart ?? null;
+    const id = nextId || active?.dataset.arrival || '';
     if (!save() || !id) return;
     const box = document.querySelector<HTMLInputElement>(`[data-arrival="${CSS.escape(id)}"]`);
-    if (box) { box.focus(); if (caret === null) box.select(); else box.setSelectionRange(caret, caret); }
+    if (box) box.focus();
   }
   function saveArrival(input: HTMLInputElement, nextId = ''): void {
     const id = input.dataset.arrival ?? '', entry = entryById(id); if (!entry) return;
@@ -751,18 +757,11 @@ namespace PaceApp {
       keepFocus(() => commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; Object.assign(e, result); e.status = 'finished'; e.resultMode = 'arrival'; }), nextId);
     } catch (error) { input.classList.add('invalid'); toast(error instanceof Error ? error.message : 'Heure invalide.', true); }
   }
-  function arriveNow(id: string): void {
-    const entry = entryById(id); if (!entry) return;
-    try {
-      const capture = Pace.arrivalNow(raceOf(entry), entry), { arrivalTime: _time, nextDay: _next, ...result } = capture;
-      commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; Object.assign(e, result); e.status = 'finished'; e.resultMode = 'arrival'; });
-    } catch (error) { toast(error instanceof Error ? error.message : 'Impossible de récupérer l’heure actuelle.', true); }
-  }
   function setStatusInline(id: string, status: 'waiting' | 'withdrawn'): void {
     const entry = entryById(id); if (!entry) return;
     const caption = status === 'waiting' ? 'Remettre en course' : 'Forfait';
     const apply = (): void => { if (commit(`${caption} : ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; Object.assign(e, Pace.setOutcome(e, status)); })) toast(`${caption} enregistré. Vous pouvez annuler cette modification.`); };
-    if (entry.status === 'finished') ask(`${caption} ?`, 'Le temps et l’arrivée seront retirés du classement. L’inscription est conservée ; Annuler permet de rétablir le résultat.', apply, caption);
+    if (status === 'withdrawn') ask(`Confirmer le forfait ou l’abandon de ${label(entry)} ?`, entry.status === 'finished' ? 'Le temps et l’arrivée seront retirés du classement. L’inscription est conservée ; Annuler permet de rétablir le résultat.' : 'L’inscription est conservée, sans temps ni classement. « Remettre en course » ou Annuler permet de revenir en arrière.', apply, 'Confirmer le forfait');
     else apply();
   }
   function clearResultInline(id: string): void {
@@ -771,6 +770,12 @@ namespace PaceApp {
       commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; });
     }, 'Effacer le résultat');
   }
+  function deleteEntryInline(id: string): void {
+    const entry = entryById(id); if (!entry) return;
+    ask('Supprimer cette ligne ?', `L’inscription de ${label(entry)}, ses horaires et son résultat seront supprimés. La commande Annuler permet de revenir en arrière.`, () => {
+      commit(`suppression de ${label(entry)}`, session => { session.entries = session.entries.filter(item => item.id !== id); });
+    }, 'Supprimer');
+  }
   function handleAction(event: MouseEvent): void {
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-action]'); if (!button) return;
     const id = button.dataset.id ?? '', action = button.dataset.action;
@@ -778,16 +783,17 @@ namespace PaceApp {
     else if (action === 'edit') openEntry(id);
     else if (action === 'photo') openPhoto(id);
     else if (action === 'result') openResult(id);
-    else if (action === 'now') arriveNow(id);
     else if (action === 'withdraw') setStatusInline(id, 'withdrawn');
     else if (action === 'reinstate') setStatusInline(id, 'waiting');
     else if (action === 'clear') clearResultInline(id);
+    else if (action === 'delete') deleteEntryInline(id);
     else if (action === 'podium') openPodium(button.dataset.raceId ?? '', button.dataset.format as Pace.RankingFormat, button.dataset.level ?? '');
   }
   document.addEventListener('click', handleAction);
   Saisie.install();
   // Quitter une case enregistre l’heure ; on attend que le clic suivant ait placé le curseur.
-  $('entries-body').addEventListener('change', event => { const input = event.target as HTMLInputElement; if (input.dataset.arrival) window.setTimeout(() => { if (input.isConnected) saveArrival(input); }); });
+  // La case d’heure change à chaque bloc tapé : on enregistre seulement en quittant la case (ou avec Entrée).
+  $('entries-body').addEventListener('focusout', event => { const input = event.target as HTMLInputElement; if (input.dataset.arrival) window.setTimeout(() => { if (input.isConnected) saveArrival(input); }); });
   $('entries-body').addEventListener('keydown', event => {
     const input = event.target as HTMLInputElement; if (event.key !== 'Enter' || !input.dataset.arrival) return;
     event.preventDefault();
