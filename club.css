@@ -135,3 +135,9 @@
 .race-table th:nth-last-child(2),.race-table td:nth-last-child(2){width:1%}.race-table td:first-child,.race-table th:first-child{width:34%}.race-table:has(#rank-heading:not([hidden])) td:nth-child(2),.race-table:has(#rank-heading:not([hidden])) th:nth-child(2){width:34%}.race-table th:last-child,.race-table td:last-child{text-align:right;padding-right:26px;width:1%}.race-table td:last-child>*{vertical-align:middle}.day-overview{grid-template-columns:1.3fr 1fr 1fr 1fr}
 .button,.row-action{background:linear-gradient(#fbfbfc,#e2e4e8);border-color:#a3a7ad;box-shadow:0 1px 2px #1e28323a,inset 0 1px 0 #fff;transition:transform .08s,box-shadow .08s}.button:hover,.row-action:hover{background:linear-gradient(#fff,#d9dce1);border-color:#7d8289}.button:active,.row-action:active{transform:translateY(1px);box-shadow:inset 0 1px 3px #1e283240}.button.primary{background:linear-gradient(#e8363f,#c71d26);border-color:#b0171f;box-shadow:0 2px 4px #b0171f55,inset 0 1px 0 #ff8a90}.button.primary:hover{background:linear-gradient(#d92a33,#b0171f)}.row-action.photo-action{background:linear-gradient(#3a3a3a,#111);border-color:#000;box-shadow:0 1px 3px #0005,inset 0 1px 0 #555}.format-chip{box-shadow:0 1px 2px #1e283226}
 .race-table tr.selected{background:#e9ecf0}.race-table tbody tr:hover{background:#eef0f3}
+/* Étiquettes de format : une couleur par format (Solo H, Solo F, Duo HH, Duo FF, Duo HF). */
+.format-badge.fmt-H{background:#e8f0fd;border-color:#c5d8f6;color:#1d5fbf;font-weight:600}
+.format-badge.fmt-F{background:#fdeaf3;border-color:#f4c6dc;color:#b0306e;font-weight:600}
+.format-badge.fmt-HH{background:#e3f4f4;border-color:#bfe3e2;color:#12706f;font-weight:600}
+.format-badge.fmt-FF{background:#fff1e3;border-color:#f6d3ae;color:#b4590f;font-weight:600}
+.format-badge.fmt-HF{background:#f1ebfc;border-color:#d9cbf3;color:#6b3fb8;font-weight:600}

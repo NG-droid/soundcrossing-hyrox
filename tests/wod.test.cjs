@@ -70,3 +70,26 @@ test('levels split the rankings: RX and Scaled athletes never share a ranking', 
   assert.deepEqual(ids(W.workoutRanking(c, l, 'RX · Solo H')), ['r:1']);
   assert.deepEqual(ids(W.workoutRanking(c, l, 'Scaled · Solo H')), ['s:1']);
 });
+
+test('import CSV: formats, niveaux, doublons et erreurs ligne par ligne', () => {
+  let n = 0; const id = () => `id${++n}`;
+  const c = { ...W.emptyCompetition('c', 'Test', '2026-10-18', 'MIXED'), levels: ['RX', 'Scaled'], athletes: [{ ...athlete('Alex Martin'), bib: '001', level: 'RX' }] };
+  const rows = [['Format', 'Participant 1', 'Participant 2', 'Niveau'], ['Solo F', 'Manon Simon', '', 'rx'], ['duo fh', 'Léa Moreau', 'Hugo Robert', 'Scaled'], ['', '', '', ''], ['Solo H', 'alex martin', '', 'RX']];
+  const ok = W.importAthletes(rows, c, id);
+  assert.equal(ok.errors.length, 0);
+  assert.equal(ok.duplicates, 1);
+  assert.deepEqual(Array.from(ok.athletes, a => `${a.bib}:${W.category(a)}:${a.level}`), ['002:F:RX', '003:HF:Scaled']);
+  const bad = W.importAthletes([['Format', 'Participant 1', 'Participant 2', 'Niveau'], ['Duo XX', 'A', 'B', 'RX'], ['Duo HH', 'A', '', 'RX'], ['Solo H', 'B', '', 'Elite']], c, id);
+  assert.equal(bad.errors.length, 3);
+  assert.match(bad.errors[0], /Ligne 2/);
+  const solo = W.importAthletes([['Format', 'Participant 1'], ['Duo HH', 'A']], W.emptyCompetition('s', 'S', '', 'SOLO'), id);
+  assert.match(solo.errors[0], /non accepté/);
+  assert.match(W.importAthletes([['Nom'], ['A']], c, id).errors[0], /Format/);
+});
+
+test('modèle CSV : séparateur point-virgule et colonne Niveau seulement si besoin', () => {
+  const duo = W.emptyCompetition('d', 'D', '', 'DUO');
+  const csv = W.toCsv(W.importTemplate(duo));
+  assert.ok(csv.startsWith('﻿"Format";"Participant 1";"Participant 2"\r\n"Duo HH"'));
+  assert.equal(W.importTemplate({ ...duo, levels: ['Pro', 'Open'] })[0].length, 4);
+});

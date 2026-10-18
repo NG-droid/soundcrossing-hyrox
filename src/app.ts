@@ -215,7 +215,7 @@ namespace PaceApp {
     $('undo-button').title = state.history.at(-1)?.label ? `Annuler : ${state.history.at(-1)!.label.replace(/abandon/gi, 'Forfait')}` : 'Aucune modification à annuler';
     $('empty-state').hidden = entries.length !== 0 || view === 'results'; $<HTMLButtonElement>('export-button').disabled = view === 'results' ? !resultRanking().length : !entries.length;
     $<HTMLButtonElement>('import-button').disabled = !race;
-    $<HTMLButtonElement>('template-button').disabled = !race;
+    $<HTMLButtonElement>('template-button').disabled = !race; $<HTMLButtonElement>('template-csv-button').disabled = !race;
     $<HTMLButtonElement>('excel-help-button').disabled = !race;
     $('settings-event-context').textContent = race ? `${race.title} · ${raceLabel(race)} · ${eventFormatLabel(race)}` : 'Créez un événement pour préparer ou exporter ses fichiers.';
     $('export-button').textContent = view === 'results' ? 'Exporter le classement (Excel)' : 'Exporter la liste (Excel)';
@@ -228,7 +228,7 @@ namespace PaceApp {
     let previousFormat = '';
     $('entries-body').innerHTML = list.map(e => {
       const key = Pace.formatKey(e), group = view === 'results' && activeFormat === 'all' && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.formatLabel(e))}</th></tr>` : ''; previousFormat = key;
-      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}<td><button class="names-button duo-names" data-action="result" data-id="${esc(e.id)}"><span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}</button></td><td><span class="format-badge ${e.format === 'DUO' ? 'duo' : ''}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td><td class="recorded-time">${e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actionButton('result', e.id, e.status === 'abandoned' || e.status === 'withdrawn' ? 'Modifier le statut' : e.arrivedAt === null ? 'Saisir le résultat' : 'Corriger')}${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}${actionButton('edit', e.id, '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>', 'icon', `Modifier l’inscription de ${label(e)}`)}</div></td></tr>`;
+      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}<td><button class="names-button duo-names" data-action="result" data-id="${esc(e.id)}"><span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}</button></td><td><span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${key}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td><td class="recorded-time">${e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actionButton('result', e.id, e.status === 'abandoned' || e.status === 'withdrawn' ? 'Modifier le statut' : e.arrivedAt === null ? 'Saisir le résultat' : 'Corriger')}${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}${actionButton('edit', e.id, '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>', 'icon', `Modifier l’inscription de ${label(e)}`)}</div></td></tr>`;
     }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : 6}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
     const focusedEntries = view === 'results' ? list : entries;
     if (!focusedEntries.some(e => e.id === focusId)) focusId = focusedEntries.find(e => !Pace.isResolved(e))?.id ?? focusedEntries.at(-1)?.id ?? '';
@@ -572,13 +572,21 @@ namespace PaceApp {
     $<HTMLButtonElement>('excel-help-template').disabled = !race;
     $<HTMLDialogElement>('excel-help-dialog').showModal();
   }
+  function templateRows(race: Pace.Race): string[][] {
+    const rows = [['Solo H', 'Alex Martin', '', '09:00'], ['Solo F', 'Manon Simon', '', '09:05'], ['Duo HH', 'Hugo Robert', 'Tom Garcia', '09:10'], ['Duo FF', 'Emma Durand', 'Léa Moreau', '09:15'], ['Duo HF', 'Lucas Petit', 'Zoé Bernard', '09:20']];
+    return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ'], ...rows.filter(row => race.format === 'MIXED' || row[0]!.startsWith(race.format === 'DUO' ? 'Duo' : 'Solo'))];
+  }
+  // Modèle CSV pour Excel en français : séparateur « ; », accents conservés.
+  function exportCsvTemplate(): void {
+    const race = currentRace(); if (!race) { openRace(); return; }
+    download(Pace.encodeCSV(templateRows(race)), 'soundcrossing-modele.csv', 'text/csv;charset=utf-8');
+  }
   function exportExcel(template = false): void {
     try {
       const race = currentRace(); if (!race) { openRace(); return; }
       const rows: (string | number | null)[][] = template
-        ? [['Format', 'Participant 1', 'Participant 2', 'Heure de départ'], ['Solo H', 'Alex Martin', '', '09:00'], ['Solo F', 'Manon Simon', '', '09:05'], ['Duo HH', 'Hugo Robert', 'Tom Garcia', '09:10'], ['Duo FF', 'Emma Durand', 'Léa Moreau', '09:15'], ['Duo HF', 'Lucas Petit', 'Zoé Bernard', '09:20']]
+        ? templateRows(race)
         : [['Rang dans le format', 'Événement', 'Date', 'Participant 1', 'H/F participant 1', 'Participant 2', 'H/F participant 2', 'Format', 'Catégorie', 'Heure de départ', 'Heure d’arrivée', 'Arrivée le lendemain', 'Temps total', 'Statut', 'Classement']];
-      if (template && race.format !== 'MIXED') rows.splice(1, rows.length - 1, ...rows.slice(1).filter(row => String(row[0]).startsWith(race.format === 'DUO' ? 'Duo' : 'Solo')));
       const ranked = view === 'results' ? resultRanking() : formatOptions.flatMap(option => Pace.rankingFor(state.session, option.key, race.date)), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
       if (!template) for (const e of view === 'results' ? ranked.map(r => r.entry) : raceEntries()) {
         const r = state.session.races.find(item => item.id === e.raceId)!;
@@ -681,6 +689,7 @@ namespace PaceApp {
   $('new-race-button').addEventListener('click', () => openRace());
   $('race-selector').addEventListener('change', () => { selectedRaceId = $<HTMLSelectElement>('race-selector').value; activeFormat = 'all'; focusId = ''; $<HTMLInputElement>('search').value = ''; rememberEvent(); render(); });
   $('template-button').addEventListener('click', () => exportExcel(true));
+  $('template-csv-button').addEventListener('click', exportCsvTemplate);
   $('excel-help-button').addEventListener('click', openExcelHelp);
   $('excel-help-template').addEventListener('click', () => exportExcel(true));
   $('export-button').addEventListener('click', () => exportExcel());

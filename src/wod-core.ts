@@ -144,6 +144,65 @@ namespace Wod {
     return [...new Set(sorted.map(group))];
   }
 
+  // Import de participants depuis un fichier CSV ou Excel. Colonnes : Format, Participant 1, Participant 2, Niveau.
+  export const IMPORT_HEADERS = ['Format', 'Participant 1', 'Participant 2', 'Niveau'];
+  export interface ImportResult { athletes: Athlete[]; errors: string[]; duplicates: number; }
+  const plain = (v: unknown): string => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const IMPORT_ALIASES: Record<string, string[]> = {
+    format: ['format', 'categorie', 'type'],
+    name1: ['participant 1', 'participant1', 'participant', 'nom', 'nom 1', 'athlete', 'name'],
+    name2: ['participant 2', 'participant2', 'nom 2', 'partenaire', 'binome'],
+    level: ['niveau', 'level', 'division'],
+  };
+  // « Solo H », « Duo HF », « HH », « FH »… → format et genres.
+  export function parseCategory(text: unknown): { format: 'SOLO' | 'DUO'; gender1: 'H' | 'F'; gender2: '' | 'H' | 'F' } | null {
+    const t = plain(text).replace(/\b(solo|duo)\b/g, '').replace(/[^hf]/g, '');
+    if (t === 'h' || t === 'f') return { format: 'SOLO', gender1: t.toUpperCase() as 'H' | 'F', gender2: '' };
+    if (t === 'hh' || t === 'ff' || t === 'hf' || t === 'fh') return { format: 'DUO', gender1: t[0]!.toUpperCase() as 'H' | 'F', gender2: t[1]!.toUpperCase() as 'H' | 'F' };
+    return null;
+  }
+  export function importAthletes(rows: unknown[][], c: Competition, makeId: () => string): ImportResult {
+    const header = (rows[0] ?? []).map(plain);
+    const col = (key: string): number => header.findIndex(h => IMPORT_ALIASES[key]!.includes(h));
+    const cols = { format: col('format'), name1: col('name1'), name2: col('name2'), level: col('level') };
+    if (cols.format < 0 || cols.name1 < 0) return { athletes: [], errors: ['La première ligne doit contenir au moins les colonnes « Format » et « Participant 1 ». Téléchargez le modèle CSV.'], duplicates: 0 };
+    const cell = (row: unknown[], i: number): string => i < 0 ? '' : String(row[i] ?? '').trim();
+    const seen = new Set(c.athletes.map(a => plain(athleteLabel(a))));
+    let bib = Number(nextBib(c));
+    const athletes: Athlete[] = [], errors: string[] = []; let duplicates = 0;
+    rows.slice(1).forEach((row, index) => {
+      const line = index + 2;
+      if (!row.some(v => String(v ?? '').trim())) return;
+      const cat = parseCategory(cell(row, cols.format)), name1 = cell(row, cols.name1), name2 = cell(row, cols.name2), rawLevel = cell(row, cols.level);
+      if (!cat) { errors.push(`Ligne ${line} : format « ${cell(row, cols.format)} » inconnu (Solo H, Solo F, Duo HH, Duo FF ou Duo HF).`); return; }
+      if (c.format !== 'MIXED' && cat.format !== c.format) { errors.push(`Ligne ${line} : ${cat.format === 'DUO' ? 'Duo' : 'Solo'} non accepté, l’événement est en ${eventFormatLabel(c.format)}.`); return; }
+      if (!name1) { errors.push(`Ligne ${line} : nom du participant 1 manquant.`); return; }
+      if (cat.format === 'DUO' && !name2) { errors.push(`Ligne ${line} : nom du participant 2 manquant pour un duo.`); return; }
+      const level = c.levels.find(l => plain(l) === plain(rawLevel));
+      if (c.levels.length && !level) { errors.push(`Ligne ${line} : niveau ${rawLevel ? `« ${rawLevel} » inconnu` : 'manquant'} (${c.levels.join(' ou ')}).`); return; }
+      const athlete: Athlete = { id: makeId(), bib: String(bib).padStart(3, '0'), format: cat.format, name1, name2: cat.format === 'DUO' ? name2 : '', gender1: cat.gender1, gender2: cat.gender2, ...(level ? { level } : {}) };
+      const key = plain(athleteLabel(athlete));
+      if (seen.has(key)) { duplicates++; return; }
+      seen.add(key); athletes.push(athlete); bib++;
+    });
+    return { athletes, errors, duplicates };
+  }
+  export function importTemplate(c: Competition): string[][] {
+    const level = c.levels[0] ?? '';
+    const rows = [['Solo H', 'Alex Martin', '', level], ['Solo F', 'Manon Simon', '', level], ['Duo HH', 'Hugo Robert', 'Tom Garcia', level], ['Duo FF', 'Emma Durand', 'Léa Moreau', level], ['Duo HF', 'Lucas Petit', 'Zoé Bernard', level]]
+      .filter(r => c.format === 'MIXED' || r[0]!.startsWith(c.format === 'DUO' ? 'Duo' : 'Solo'));
+    return [c.levels.length ? IMPORT_HEADERS : IMPORT_HEADERS.slice(0, 3), ...rows.map(r => c.levels.length ? r : r.slice(0, 3))];
+  }
+  // Séparateur « ; » pour Excel en français, BOM pour les accents.
+  export function toCsv(rows: string[][]): string {
+    return '\uFEFF' + rows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(';')).join('\r\n') + '\r\n';
+  }
+  // Fichiers CSV : UTF-8 (avec ou sans BOM), sinon Windows-1252 comme les anciens Excel.
+  export function decodeText(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch { return new TextDecoder('windows-1252').decode(bytes); }
+  }
   export function nextBib(c: Competition): string {
     const max = c.athletes.reduce((m, a) => Math.max(m, Number(a.bib) || 0), 0);
     return String(max + 1).padStart(3, '0');
