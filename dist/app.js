@@ -92,6 +92,9 @@ var PaceApp;
     }
     // Copie de la session sur le disque via server.py : elle survit à un navigateur qui efface ses données à la fermeture.
     let diskPending = null, diskBusy = false, diskWarned = false;
+    // Révision de la copie disque sur laquelle on s’appuie : le serveur refuse l’écriture si elle a changé entre-temps.
+    let diskRevision = null;
+    const revisionOf = (raw) => { const r = raw?.revision; return typeof r === 'string' ? r : ''; };
     function saveToDisk(raw) {
         if (typeof fetch !== 'function' || location.protocol === 'file:')
             return;
@@ -104,13 +107,14 @@ var PaceApp;
                 const body = diskPending;
                 diskPending = null;
                 try {
-                    const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+                    const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Base-Revision': diskRevision ?? '' }, body });
                     if (response.status === 409) {
-                        toast('Une session plus récente est enregistrée sur le disque (autre navigateur). Rechargez la page.', true);
+                        toast('La copie sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.', true);
                         continue;
                     }
                     if (!response.ok)
                         throw Error();
+                    diskRevision = revisionOf(JSON.parse(body));
                     diskWarned = false;
                 }
                 catch {
@@ -129,8 +133,13 @@ var PaceApp;
         let disk = null;
         try {
             const response = await fetch('/data', { cache: 'no-store' });
-            if (response.ok)
-                disk = validateStore(await response.json());
+            if (response.status === 404)
+                diskRevision = '';
+            if (response.ok) {
+                const raw = await response.json();
+                diskRevision = revisionOf(raw);
+                disk = validateStore(raw);
+            }
         }
         catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
         if (disk && (loadedRaw === null || storageBlocked || disk.savedAt > state.savedAt)) {

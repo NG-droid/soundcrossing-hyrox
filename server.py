@@ -41,9 +41,9 @@ DATA_FILES = {"/data": (DATA_FILE, "session"), "/data/wod": (DATA_FILE.with_name
 WRITE_LOCK = threading.Lock()
 
 
-def saved_at(store) -> float:
-    value = store.get("savedAt") if isinstance(store, dict) else None
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+def revision(store) -> str:
+    value = store.get("revision") if isinstance(store, dict) else None
+    return value if isinstance(value, str) else ""
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -90,6 +90,11 @@ class Handler(SimpleHTTPRequestHandler):
                 or self.headers.get("Content-Type") != "application/json":
             self.send_error(403)
             return
+        # Révision de la copie disque sur laquelle la page s’appuie : obligatoire, pour refuser une copie périmée.
+        base = self.headers.get("X-Base-Revision")
+        if base is None:
+            self.send_error(428, "Révision de départ manquante.")
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_DATA:
@@ -106,8 +111,9 @@ class Handler(SimpleHTTPRequestHandler):
                 current = json.loads(data_file.read_bytes())
             except (OSError, ValueError):
                 current = None
-            # Une version plus ancienne (autre navigateur, requête en retard) n’écrase jamais une plus récente.
-            if current is not None and saved_at(store) < saved_at(current):
+            # La copie disque a changé depuis que la page l’a lue (autre navigateur) : on n’écrase pas ses ajouts,
+            # même si l’heure de la page est plus récente.
+            if current is not None and revision(current) != base:
                 self.send_error(409, "Une version plus récente est déjà enregistrée.")
                 return
             pending = None

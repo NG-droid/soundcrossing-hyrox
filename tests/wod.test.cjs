@@ -172,6 +172,37 @@ test('statuses separate scores to enter from forfeits, and the ranking stays pro
   assert.ok(sheets[1].rows.some(r => r[3] === 'Forfait'));
 });
 
+test('one business rule for scores: zero time, time over the cap, time with reps are refused everywhere', () => {
+  const w = { id: 'w', name: 'Fran', description: '', type: 'time', capMinutes: 10, totalReps: 90, repsPerRound: null };
+  assert.equal(W.scoreProblem(w, { timeMs: 540000 }), null);
+  assert.match(W.scoreProblem(w, { timeMs: 0 }), /nul/);
+  assert.match(W.scoreProblem(w, { timeMs: 660000 }), /time cap/);
+  assert.match(W.scoreProblem(w, { timeMs: 300000, reps: 40 }), /en même temps/);
+  assert.match(W.scoreProblem(w, { reps: 90 }), /c’est un temps/);
+  assert.throws(() => W.buildScore(w, { timeMs: 0 }), /nul/);
+  const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b')], workouts: [w], scores: { w: { a: { timeMs: 540000 }, b: { reps: 50 } } } };
+  // Réduire le cap de 10 à 5 min : le temps de 9 min ne peut plus rester « terminé ».
+  assert.deepEqual(Array.from(W.workoutConflicts(c, { ...w, capMinutes: 5 })), ['a : temps 09:00 au-delà du time cap de 5 min']);
+  assert.deepEqual(Array.from(W.workoutConflicts(c, w)), []);
+});
+
+test('restoring a backup applies the entry rules, browser data stays readable', () => {
+  const w = { id: 'w', name: 'Fran', description: '', type: 'time', capMinutes: 8, totalReps: null, repsPerRound: null };
+  const bad = { version: 2, selectedId: 'c', events: [{ ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b'), athlete('d')], workouts: [w],
+    scores: { w: { a: { timeMs: 0 }, b: { timeMs: 600000 }, d: { timeMs: 300000, reps: 12 } } } }] };
+  assert.throws(() => W.validateStore(bad, true), error => /3 score\(s\) invalide/.test(error.message) && /Fran, a : temps nul/.test(error.message) && /time cap/.test(error.message));
+  assert.equal(W.validateStore(bad).events.length, 1);
+  assert.throws(() => W.validateStore({ ...bad, events: [{ ...bad.events[0], scores: { w: { a: { forfeit: true, timeMs: 1000 } } } }] }, true), /forfait et score/);
+  assert.equal(W.validateStore({ ...bad, events: [{ ...bad.events[0], scores: { w: { a: { timeMs: 300000 }, b: { reps: 20 }, d: { forfeit: true } } } }] }, true).events.length, 1);
+});
+
+test('an event without any WOD has no ranking and no podium', () => {
+  const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b')] };
+  assert.deepEqual(Array.from(W.generalRanking(c, 'Solo H')), []);
+  const rules = W.exportRows(c).find(s => s.name === 'Règles').rows.flat();
+  assert.ok(rules.includes('Aucun WOD : pas encore de classement.'));
+});
+
 test('finale: only finalists, points reset, ties broken by last final WOD then qualif rank', () => {
   const q = { id: 'q', name: 'Q', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null };
   const f1 = { id: 'f1', name: 'F1', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null, phase: 'final' };
