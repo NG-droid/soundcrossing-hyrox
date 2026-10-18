@@ -142,7 +142,7 @@ var Wod;
     }
     function renderAthletes() {
         const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
-        heading('Participants', help, `<button class="button" data-action="import-template-xlsx" title="Fichier vierge avec listes déroulantes et légende">Modèle Excel</button><button class="button" data-action="import-template" title="Fichier vierge, seulement les colonnes">Modèle CSV</button><button class="button" data-action="import-athletes" title="Fichier CSV ou Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (CSV / Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
+        heading('Participants', help, `<button class="button" data-action="import-template-xlsx" title="Fichier vierge avec listes déroulantes et légende">Modèle Excel</button><button class="button" data-action="import-athletes" title="Fichier Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
         const rows = state.athletes.map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
         setTable(['PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
     }
@@ -559,8 +559,6 @@ var Wod;
                 $('import-file').click();
             else if (d.action === 'import-template-xlsx')
                 Modele.download(Modele.workbook(Wod.importColumns(state)), 'modele-participants-wod.xlsx');
-            else if (d.action === 'import-template')
-                download(`modele-participants-wod.csv`, Wod.toCsv(Wod.importTemplate(state)), 'text/csv;charset=utf-8');
             else if (d.editAthlete)
                 openAthlete(state.athletes.find(a => a.id === d.editAthlete));
             else if (d.editWorkout)
