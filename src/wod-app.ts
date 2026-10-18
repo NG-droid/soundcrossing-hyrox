@@ -149,6 +149,8 @@ namespace Wod {
     $('count-workouts').textContent = String(state.workouts.length);
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
+    (document.querySelector('.wod-table') as HTMLElement).classList.toggle('wod-ranking', view === 'ranking');
+    $('podium-footer').hidden = true;
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
   function setTable(head: string[], rows: string[], emptyText: string): void {
@@ -210,13 +212,14 @@ namespace Wod {
   function inputsFor(w: Workout, a: Athlete): string {
     const s = state.scores[w.id]?.[a.id];
     if (s?.forfeit) return `<span class="outcome-badge">Forfait</span>`;
-    const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric'): string =>
-      `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
+    const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric', off = false): string =>
+      `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}"${off ? ' disabled' : ''}>`;
     if (w.type === 'time') {
       // Temps du chrono (durée, pas une heure) : mm:ss si le cap fait moins d’une heure, sinon hh:mm:ss.
       const short = shortTime(w);
-      const time = Saisie.box(`data-score="${a.id}" data-field="time"`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short);
-      return `<div class="score-inputs">${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}</div>`;
+      // Soit un temps (fini), soit des reps (stoppé au cap) : la case remplie grise l’autre.
+      const time = Saisie.box(`data-score="${a.id}" data-field="time"${s?.reps !== undefined ? ' disabled' : ''}`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short);
+      return `<div class="score-inputs">${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites', 'numeric', s?.timeMs !== undefined)}</div>`;
     }
     if (w.type === 'load') return `<div class="score-inputs">${field('kg', s?.kg, 'Kg', 'decimal')}<span>kg</span></div>`;
     if (w.type === 'amrap' && w.repsPerRound) {
@@ -309,6 +312,42 @@ namespace Wod {
     }
   }
 
+  // Rang comme dans l’Hyrox : pastille, la 1re place en rouge quand le classement est définitif.
+  const rankBadge = (rank: number, final: boolean): string => `<span class="result-rank ${final ? `rank-${rank}` : 'provisional'}">${rank}</span>`;
+  // Bouton « Top 3 » en bas du tableau, noir, comme dans l’Hyrox.
+  function podiumFooter(ranked: number, pending: number): void {
+    $('podium-footer').hidden = false;
+    $('podium-footer-count').textContent = `${ranked} classé(s)${pending ? ` · ${pending} score(s) à saisir` : ''}`;
+    $('podium-footer-label').textContent = pending ? 'Top 3 provisoire' : 'Top 3 final';
+    $<HTMLButtonElement>('show-podium-button').disabled = !ranked;
+  }
+  // Podium plein écran : même écran que l’Hyrox, pour l’onglet affiché (général ou un WOD) et la catégorie choisie.
+  let podiumOpen = false;
+  function openPodium(): void {
+    const cat = rankingCat; if (!cat) return;
+    const general = rankingTab === 'general', w = state.workouts.find(x => x.id === rankingTab);
+    const places: { rank: number; athlete: Athlete; value: string }[] = general
+      ? generalRanking(state, cat).map(r => ({ rank: r.rank, athlete: r.athlete, value: state.method === 'places' ? `Total ${r.total}` : `${r.total} pts` }))
+      : w ? workoutRanking(state, w, cat).map(p => ({ rank: p.rank, athlete: p.athlete, value: scoreText(w, p.score) })) : [];
+    const top = places.filter(p => p.rank <= 3);
+    if (!top.length) { toast('Aucun score classé dans cette catégorie.'); return; }
+    const pending = general ? pendingScores(state, cat) : w ? state.athletes.filter(a => group(a) === cat && scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
+    $('podium-event').textContent = state.title;
+    $('podium-date').textContent = state.date ? new Date(`${state.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, c => c.toLocaleUpperCase('fr-FR')) : '';
+    $('podium-kicker').textContent = `${general ? 'CLASSEMENT GÉNÉRAL' : w!.name.toUpperCase()} · ${pending ? 'PROVISOIRE' : 'FINAL'}`;
+    $('podium-category').textContent = cat;
+    $('podium-stage').innerHTML = [2, 1, 3].map(rank => {
+      const list = top.filter(p => p.rank === rank), metal = rank === 1 ? 'Or' : rank === 2 ? 'Argent' : 'Bronze';
+      return `<article class="podium-stage-card stage-${rank}${list.length ? '' : ' is-empty'}">${list.length ? `<div class="podium-award" aria-label="${rank === 1 ? '1er' : `${rank}e`} — ${metal}"><span class="podium-position-number" aria-hidden="true">0${rank}</span><span class="podium-metal-label" aria-hidden="true">${metal}</span></div>` + list.map(p => `<div class="podium-stage-winner"><div class="podium-stage-names"><span>${esc(p.athlete.name1)}</span>${p.athlete.format === 'DUO' ? `<span class="podium-stage-join">&amp;</span><span>${esc(p.athlete.name2)}</span>` : ''}</div><div class="podium-stage-time">${esc(p.value)}</div></div>`).join('') : '<div class="podium-stage-rank">—</div><p>Place non attribuée</p>'}</article>`;
+    }).join('');
+    podiumOpen = true; $('podium-screen').hidden = false; document.body.style.overflow = 'hidden';
+    void $('podium-screen').requestFullscreen?.().catch(() => undefined);
+  }
+  function closePodium(): void {
+    if (!podiumOpen) return;
+    podiumOpen = false; $('podium-screen').hidden = true; document.body.style.overflow = '';
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  }
   function renderRanking(): void {
     const levels = levelsUsed();
     if (!levels.includes(rankingLevel)) rankingLevel = levels.length > 1 ? levels[0]! : '';
@@ -324,8 +363,9 @@ namespace Wod {
       const pending = pendingScores(state, cat);
       heading(pending ? 'Classement général provisoire' : 'Classement général définitif', `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${rulesText(state).slice(0, 3).join(' ')}`);
       const cell = (w: Workout, r: GeneralRow): string => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${STATUS_LABELS[scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
+      podiumFooter(generalRanking(state, cat).length, pending);
       const rows = generalRanking(state, cat).map(r =>
-        `<tr><td class="rank">${r.rank}</td><td><strong>${esc(athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? group(r.athlete) : categoryLabel(category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
+        `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? group(r.athlete) : categoryLabel(category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
       setTable(['RANG', 'PARTICIPANT', ...state.workouts.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS'], rows, 'Aucun participant dans cette catégorie.');
       return;
     }
@@ -334,8 +374,9 @@ namespace Wod {
     const todo = inCat.filter(a => scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length;
     heading(w.name, `${TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
     const label = (a: Athlete): string => `<strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(a.level ? group(a) : categoryLabel(category(a)))}</div>`;
+    podiumFooter(workoutRanking(state, w, cat).length, todo);
     const rows = workoutRanking(state, w, cat).map(p =>
-      `<tr><td class="rank">${p.rank}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+      `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${pointsFor(p.rank)} pts</td>` : ''}</tr>`);
     for (const a of inCat) if (state.scores[w.id]?.[a.id]?.forfeit)
       rows.push(`<tr><td class="rank">—</td><td>${label(a)}</td><td><span class="outcome-badge">Forfait</span></td>${state.method === 'points' ? '<td>0 pt</td>' : ''}</tr>`);
     setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
@@ -519,6 +560,7 @@ namespace Wod {
         const w = state.workouts.find(x => x.id === d.deleteWorkout);
         if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; if (save()) render(); }
       } else if (d.wod) { selectedWod = d.wod; render(); }
+      else if (d.action === 'podium') openPodium();
       else if (d.action === 'only-todo') { onlyTodo = !onlyTodo; render(); }
       else if (d.forfeit) setForfeit(d.forfeit, true);
       else if (d.reinstate) setForfeit(d.reinstate, false);
@@ -529,7 +571,15 @@ namespace Wod {
       else if (d.rankLevel) { rankingLevel = d.rankLevel; render(); }
       else if (d.level !== undefined && t.closest('#entry-form')) { entryLevel = d.level; $('entry-error').textContent = ''; syncEntryForm(); }
     });
+    $('table-body').addEventListener('input', e => {
+      const i = e.target as HTMLInputElement, other = { time: 'reps', reps: 'time' }[i.dataset.field ?? ''];
+      const box = other ? i.closest('tr')?.querySelector<HTMLInputElement>(`[data-field="${other}"]`) : null;
+      if (box) box.disabled = i.value.trim() !== '';
+    });
     $('table-body').addEventListener('change', e => { const i = e.target as HTMLInputElement; if (i.dataset.score) saveScore(i); });
+    $('close-podium').addEventListener('click', closePodium);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && podiumOpen) { e.preventDefault(); closePodium(); } });
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) closePodium(); });
     $('table-body').addEventListener('keydown', e => {
       const i = e.target as HTMLInputElement;
       if (e.key !== 'Enter' || !i.dataset.score) return;

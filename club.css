@@ -190,3 +190,10 @@
 .list-panel{border-top-left-radius:0!important}
 /* Déjà dit dans la description du classement : on ne l’affiche plus entre les onglets et la page. */
 #results-progress{display:none!important}
+/* Onglet actif : fond rouge, liseré noir (Hyrox et WOD). */
+.day-tabs>div>button.active{background:#d8242d;color:#fff;border-color:#d8242d;border-top:0;padding-top:12px;box-shadow:inset 0 -4px 0 #1b1b1b}
+.day-tabs>div>button.active small{color:#fff}
+/* Onglets en relief, comme les boutons. */
+.day-tabs>div>button{background:linear-gradient(#e2e4e8,#c4c7cc);box-shadow:inset 0 1px 0 #ffffffb0,0 -1px 3px #1e283224}
+.day-tabs>div>button:hover{background:linear-gradient(#eceef1,#d0d3d8)}
+.day-tabs>div>button.active{background:linear-gradient(#e8363f,#c71d26);box-shadow:inset 0 1px 0 #ffffff55,inset 0 -4px 0 #1b1b1b,0 -2px 6px #1e283233;text-shadow:0 1px 1px #0000004d}
