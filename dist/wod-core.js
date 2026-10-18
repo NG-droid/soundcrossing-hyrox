@@ -25,7 +25,8 @@ var Wod;
     Wod.category = category;
     function categoryLabel(c) { return c.length === 1 ? `Solo ${c}` : `Duo ${c}`; }
     Wod.categoryLabel = categoryLabel;
-    Wod.LEVEL_PRESETS = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'], all: ['RX', 'Scaled', 'Pro', 'Open'] };
+    // En WOD, les niveaux sont RX et Scaled (Pro / Open, c’est l’Hyrox).
+    Wod.LEVEL_PRESETS = { none: [], rx: ['RX', 'Scaled'] };
     // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
     function group(a) { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
     Wod.group = group;
@@ -141,7 +142,7 @@ var Wod;
         return [...new Set(sorted.map(group))];
     }
     Wod.usedGroups = usedGroups;
-    // Changement de niveaux : un niveau qui existe encore est gardé ; sinon RX ↔ Pro et Scaled ↔ Open.
+    // Changement de niveaux : un niveau qui existe encore est gardé ; sinon Pro devient RX et Open devient Scaled.
     function remapLevel(level, from, to) {
         if (!to.length)
             return undefined;
@@ -258,10 +259,20 @@ var Wod;
         if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null)
             throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
         const format = v.format === 'SOLO' || v.format === 'DUO' ? v.format : 'MIXED';
+        // Anciens événements en Pro / Open : ils passent en RX / Scaled (Pro → RX, Open → Scaled).
+        let levels = Array.isArray(v.levels) ? v.levels.map(String) : [];
+        if (levels.length && levels.join() !== Wod.LEVEL_PRESETS.rx.join()) {
+            for (const a of v.athletes) {
+                const level = remapLevel(a.level, levels, Wod.LEVEL_PRESETS.rx);
+                if (level)
+                    a.level = level;
+            }
+            levels = [...Wod.LEVEL_PRESETS.rx];
+        }
         return {
             id: String(v.id || 'wod-1'), title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''), format,
             method: v.method === 'points' ? 'points' : 'places',
-            levels: Array.isArray(v.levels) ? v.levels.map(String) : [],
+            levels,
             athletes: v.athletes, workouts: v.workouts, scores: v.scores,
         };
     }

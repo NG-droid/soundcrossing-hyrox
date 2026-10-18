@@ -15,7 +15,7 @@ namespace Wod {
     store.selectedId = found?.id ?? '';
     state = found ?? emptyCompetition('', '', today(), 'MIXED');
   }
-  const LEVEL_HELP: Record<string, string> = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée', Pro: 'Charges lourdes', Open: 'Charges standard' };
+  const LEVEL_HELP: Record<string, string> = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée' };
   const dateLabel = (date: string): string => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR') : 'sans date';
   let view: View = 'athletes';
   let selectedWod = '';
@@ -149,7 +149,7 @@ namespace Wod {
     chips('chips', state.workouts.map(x => ({ key: x.id, label: x.name })), selectedWod, 'wod');
     if (!w) { setTable([], [], 'Ajoutez un WOD dans l’onglet 2.'); return; }
     // Une section par groupe (niveau + catégorie) : on saisit et on compare les athlètes d’un même classement.
-    // Filtre par niveau (RX, Scaled, Pro, Open) quand l’événement en a plusieurs.
+    // Filtre par niveau (RX, Scaled) quand l’événement en a plusieurs.
     const levels = levelsUsed();
     if (!levels.includes(scoreLevel)) scoreLevel = '';
     if (levels.length > 1) chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(l => ({ key: l, label: l }))], scoreLevel, 'score-level');
@@ -336,7 +336,7 @@ namespace Wod {
     const target = existing ?? emptyCompetition(uid(), '', '', format);
     target.title = v('title') || 'Soundcrossing WOD'; target.date = v('date'); target.format = format;
     target.method = v('method') === 'points' ? 'points' : 'places';
-    // Changer de niveaux : RX devient Pro, Scaled devient Open ; « un seul niveau » les retire.
+    // Changer de niveaux : « un seul niveau » les retire.
     const levels = LEVEL_PRESETS[v('levels')] ?? [];
     if (levels.join() !== target.levels.join()) {
       for (const a of target.athletes) {

@@ -45,7 +45,8 @@ namespace Wod {
     return a.gender1 === a.gender2 ? a.gender1 === 'H' ? 'HH' : 'FF' : 'HF';
   }
   export function categoryLabel(c: Category): string { return c.length === 1 ? `Solo ${c}` : `Duo ${c}`; }
-  export const LEVEL_PRESETS: Record<string, string[]> = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'], all: ['RX', 'Scaled', 'Pro', 'Open'] };
+  // En WOD, les niveaux sont RX et Scaled (Pro / Open, c’est l’Hyrox).
+  export const LEVEL_PRESETS: Record<string, string[]> = { none: [], rx: ['RX', 'Scaled'] };
   // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
   export function group(a: Athlete): string { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
   export function athleteLabel(a: Athlete): string { return a.format === 'DUO' ? `${a.name1} & ${a.name2}` : a.name1; }
@@ -144,7 +145,7 @@ namespace Wod {
     return [...new Set(sorted.map(group))];
   }
 
-  // Changement de niveaux : un niveau qui existe encore est gardé ; sinon RX ↔ Pro et Scaled ↔ Open.
+  // Changement de niveaux : un niveau qui existe encore est gardé ; sinon Pro devient RX et Open devient Scaled.
   export function remapLevel(level: string | undefined, from: string[], to: string[]): string | undefined {
     if (!to.length) return undefined;
     if (level && to.includes(level)) return level;
@@ -224,10 +225,16 @@ namespace Wod {
     if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null)
       throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
     const format: EventFormat = v.format === 'SOLO' || v.format === 'DUO' ? v.format : 'MIXED';
+    // Anciens événements en Pro / Open : ils passent en RX / Scaled (Pro → RX, Open → Scaled).
+    let levels = Array.isArray(v.levels) ? v.levels.map(String) : [];
+    if (levels.length && levels.join() !== LEVEL_PRESETS.rx!.join()) {
+      for (const a of v.athletes as Athlete[]) { const level = remapLevel(a.level, levels, LEVEL_PRESETS.rx!); if (level) a.level = level; }
+      levels = [...LEVEL_PRESETS.rx!];
+    }
     return {
       id: String(v.id || 'wod-1'), title: String(v.title ?? 'Compétition WOD'), date: String(v.date ?? ''), format,
       method: v.method === 'points' ? 'points' : 'places',
-      levels: Array.isArray(v.levels) ? v.levels.map(String) : [],
+      levels,
       athletes: v.athletes, workouts: v.workouts, scores: v.scores,
     };
   }

@@ -15,7 +15,7 @@ var Wod;
         store.selectedId = found?.id ?? '';
         state = found ?? Wod.emptyCompetition('', '', today(), 'MIXED');
     }
-    const LEVEL_HELP = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée', Pro: 'Charges lourdes', Open: 'Charges standard' };
+    const LEVEL_HELP = { RX: 'Charges et mouvements officiels', Scaled: 'Version allégée' };
     const dateLabel = (date) => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR') : 'sans date';
     let view = 'athletes';
     let selectedWod = '';
@@ -194,7 +194,7 @@ var Wod;
             return;
         }
         // Une section par groupe (niveau + catégorie) : on saisit et on compare les athlètes d’un même classement.
-        // Filtre par niveau (RX, Scaled, Pro, Open) quand l’événement en a plusieurs.
+        // Filtre par niveau (RX, Scaled) quand l’événement en a plusieurs.
         const levels = levelsUsed();
         if (!levels.includes(scoreLevel))
             scoreLevel = '';
@@ -465,7 +465,7 @@ var Wod;
         target.date = v('date');
         target.format = format;
         target.method = v('method') === 'points' ? 'points' : 'places';
-        // Changer de niveaux : RX devient Pro, Scaled devient Open ; « un seul niveau » les retire.
+        // Changer de niveaux : « un seul niveau » les retire.
         const levels = Wod.LEVEL_PRESETS[v('levels')] ?? [];
         if (levels.join() !== target.levels.join()) {
             for (const a of target.athletes) {
