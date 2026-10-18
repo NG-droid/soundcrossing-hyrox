@@ -187,4 +187,6 @@
 .day-tabs>div>button.active{background:#f6f7f8;color:#b01b24;border-color:#9fa3a9;border-top:4px solid #d8242d;box-shadow:none;padding-top:15px;z-index:2}
 .day-tabs>div>button.active small{color:#b01b24}
 .day-tabs #pending-filter{margin-bottom:8px}
-.day-tabs+*{border-top-left-radius:0!important}
+.list-panel{border-top-left-radius:0!important}
+/* Déjà dit dans la description du classement : on ne l’affiche plus entre les onglets et la page. */
+#results-progress{display:none!important}
