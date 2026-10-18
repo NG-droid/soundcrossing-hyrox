@@ -44,9 +44,9 @@ test('time entry accepts common formats and rejects nonsense', () => {
   assert.throws(() => W.parseTime('abc'), /illisible/);
 });
 
-test('the demo exports one general sheet plus one sheet per WOD', () => {
+test('the demo exports one general sheet plus one sheet per WOD and the rules', () => {
   const sheets = W.exportRows(W.demo('2026-10-17'));
-  assert.deepEqual(Array.from(sheets, s => s.name), ['Général', '1. WOD 1 — Fran', '2. WOD 2 — Cindy', '3. WOD 3 — Clean max']);
+  assert.deepEqual(Array.from(sheets, s => s.name), ['Général', '1. WOD 1 — Fran', '2. WOD 2 — Cindy', '3. WOD 3 — Clean max', 'Règles']);
   assert.equal(sheets[0].rows.length, 11);
 });
 
@@ -132,4 +132,42 @@ test('scores of removed athletes or WOD are dropped, and save metadata is kept',
   assert.deepEqual(JSON.parse(JSON.stringify(store.events[0].scores)), { w: { a: { reps: 3 } } });
   assert.equal(store.savedAt, 42); assert.equal(store.revision, 'r1');
   assert.equal(W.validateStore(W.demo('2026-10-18')).events[0].athletes.length, 10);
+});
+
+test('scores are refused when ambiguous instead of being rounded or guessed', () => {
+  const fran = { id: 'w', name: 'Fran', description: '', type: 'time', capMinutes: 8, totalReps: 90, repsPerRound: null };
+  const cindy = { id: 'c', name: 'Cindy', description: '', type: 'amrap', capMinutes: 20, totalReps: null, repsPerRound: 30 };
+  const max = { id: 'm', name: 'Max', description: '', type: 'reps', capMinutes: null, totalReps: null, repsPerRound: null };
+  const clean = { id: 'l', name: 'Clean', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null };
+  assert.throws(() => W.buildScore(fran, { timeMs: 300000, reps: '70' }), /pas les deux/);
+  assert.throws(() => W.buildScore(fran, { timeMs: null, reps: '70.5' }), /entier/);
+  assert.equal(JSON.stringify(W.buildScore(fran, { timeMs: null, reps: '70' })), '{"reps":70}');
+  assert.throws(() => W.buildScore(cindy, { timeMs: null, rounds: '5,5', rest: '' }), /entier/);
+  assert.throws(() => W.buildScore(cindy, { timeMs: null, rounds: '5', rest: '30' }), /moins de 30/);
+  assert.equal(JSON.stringify(W.buildScore(cindy, { timeMs: null, rounds: '5', rest: '2' })), '{"reps":152}');
+  assert.throws(() => W.buildScore(max, { timeMs: null, reps: '12.4' }), /entier/);
+  assert.equal(JSON.stringify(W.buildScore(clean, { timeMs: null, kg: '102,5' })), '{"kg":102.5}');
+  assert.equal(W.buildScore(max, { timeMs: null, reps: '' }), null);
+});
+
+test('statuses separate scores to enter from forfeits, and the ranking stays provisional until all are entered', () => {
+  const t = { id: 't', name: 'T', description: '', type: 'time', capMinutes: 8, totalReps: 90, repsPerRound: null };
+  const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b'), athlete('c')], workouts: [t],
+    scores: { t: { a: { timeMs: 100 }, b: { forfeit: true } } } };
+  assert.equal(W.scoreStatus(t, c.scores.t.a), 'done');
+  assert.equal(W.scoreStatus(t, { reps: 50 }), 'capped');
+  assert.equal(W.scoreStatus(t, c.scores.t.b), 'forfeit');
+  assert.equal(W.scoreStatus(t, undefined), 'todo');
+  assert.equal(W.pendingScores(c), 1);
+  assert.deepEqual(ids(W.workoutRanking(c, t, 'Solo H')), ['a:1']);
+  assert.deepEqual(Array.from(W.generalRanking(c, 'Solo H'), r => `${r.athlete.id}:${r.total}`), ['a:1', 'b:3', 'c:3']);
+  c.scores.t.c = { reps: 40 };
+  assert.equal(W.pendingScores(c), 0);
+  assert.equal(W.hasAnyScore(c), true);
+  const restored = W.validate(JSON.parse(JSON.stringify(c)));
+  assert.equal(restored.scores.t.b.forfeit, true);
+  assert.throws(() => W.validate({ ...c, scores: { t: { a: { reps: 1.5 } } } }), /entières/);
+  const sheets = W.exportRows(c);
+  assert.equal(sheets.at(-1).name, 'Règles');
+  assert.ok(sheets[1].rows.some(r => r[3] === 'Forfait'));
 });

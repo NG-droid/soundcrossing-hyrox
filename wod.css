@@ -21,3 +21,4 @@
 .group-row td{text-align:left!important;background:#efefeb;font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding-top:10px!important;padding-bottom:10px!important}
 /* Temps du WOD : même case hh:mm:ss que l’heure d’arrivée de l’Hyrox. */
 .score-inputs input.time-box{width:104px}
+.method-rules{margin:10px 0 0;font-size:12px;color:#555}
