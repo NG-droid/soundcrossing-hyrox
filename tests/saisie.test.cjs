@@ -34,3 +34,13 @@ test('temps du WOD : même case, résultat en millisecondes', () => {
   assert.equal(S.fromMs(3750000), '01:02:30');
   assert.equal(S.fromMs(undefined), '');
 });
+
+test('WOD court (cap < 1 h) : case mm:ss', () => {
+  assert.equal(S.mask('1230', 2), '12:30');
+  assert.equal(S.mask('123045', 2), '12:30');
+  assert.equal(S.duration('1230', true), 750000);
+  assert.equal(S.duration('7:05', true), 425000);
+  assert.equal(S.fromMs(750000, true), '12:30');
+  assert.throws(() => S.duration('12:75', true), /entre 00 et 59/);
+  assert.throws(() => S.duration('12:3', true), /mm:ss/);
+});

@@ -213,10 +213,10 @@ namespace Wod {
     const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric'): string =>
       `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
     if (w.type === 'time') {
-      // Même case que l’heure d’arrivée de l’Hyrox : on tape hh:mm:ss.
-      const time = Saisie.box(`data-score="${a.id}" data-field="time"`, Saisie.fromMs(s?.timeMs), 'Temps hh:mm:ss');
-      const cap = `${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
-      return `<div class="score-inputs">${cap}</div>`;
+      // Temps du chrono (durée, pas une heure) : mm:ss si le cap fait moins d’une heure, sinon hh:mm:ss.
+      const short = shortTime(w);
+      const time = Saisie.box(`data-score="${a.id}" data-field="time"`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short);
+      return `<div class="score-inputs">${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}</div>`;
     }
     if (w.type === 'load') return `<div class="score-inputs">${field('kg', s?.kg, 'Kg', 'decimal')}<span>kg</span></div>`;
     if (w.type === 'amrap' && w.repsPerRound) {
@@ -226,6 +226,13 @@ namespace Wod {
     }
     return `<div class="score-inputs">${field('reps', s?.reps, 'Reps')}<span>reps</span></div>`;
   }
+  const shortTime = (w: Workout): boolean => !!w.capMinutes && w.capMinutes < 60;
+  const capText = (w: Workout): string => w.capMinutes ? `${w.capMinutes} min` : '';
+  // Sélecteur de WOD : une barre d’onglets avec le nom, le type et le cap de chaque épreuve.
+  function wodPicker(items: { key: string; label: string; sub: string }[], active: string, attr: string): void {
+    $('chips').innerHTML = `<div class="wod-picker" role="tablist">${items.map(i => `<button role="tab" aria-selected="${i.key === active}" class="${i.key === active ? 'active' : ''}" data-${attr}="${esc(i.key)}"><strong>${esc(i.label)}</strong><small>${esc(i.sub)}</small></button>`).join('')}</div>`;
+  }
+  const wodTab = (w: Workout): { key: string; label: string; sub: string } => ({ key: w.id, label: w.name, sub: [TYPE_LABELS[w.type], w.capMinutes ? `${w.type === 'time' ? 'cap ' : ''}${capText(w)}` : ''].filter(Boolean).join(' · ') });
   // Niveaux qui ont au moins un inscrit, dans l’ordre de l’événement.
   function levelsUsed(): string[] { return state.levels.filter(l => state.athletes.some(a => a.level === l)); }
   function shortGroup(g: string, level: string): string { return level ? g.slice(level.length + 3) : g; }
@@ -238,9 +245,10 @@ namespace Wod {
   function renderScores(): void {
     const w = currentWod();
     const todo = w ? state.athletes.filter(a => scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
-    heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.',
+    const how = w?.type === 'time' ? ` Saisissez le temps affiché par le chrono (${shortTime(w) ? 'mm:ss' : 'hh:mm:ss'}), pas une heure.${w.capMinutes ? ` Time cap : ${capText(w)}.` : ''}` : '';
+    heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}.${how} Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.',
       w ? `<button class="format-chip${onlyTodo ? ' active' : ''}" data-action="only-todo" aria-pressed="${onlyTodo}">À saisir seulement (${todo})</button>` : '');
-    chips('chips', state.workouts.map(x => ({ key: x.id, label: x.name })), selectedWod, 'wod');
+    if (state.workouts.length) wodPicker(state.workouts.map(wodTab), selectedWod, 'wod');
     if (!w) { setTable([], [], 'Ajoutez un WOD dans l’onglet 2.'); return; }
     // Une section par groupe (niveau + catégorie) : on saisit et on compare les athlètes d’un même classement.
     // Filtre par niveau (RX, Scaled) quand l’événement en a plusieurs.
@@ -261,7 +269,8 @@ namespace Wod {
         rows.push(`<tr><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${savedText(w, a)}</td><td class="actions">${forfeit ? `<button class="button compact" data-reinstate="${a.id}">Annuler le forfait</button>` : `<button class="button compact" data-forfeit="${a.id}">Forfait</button>`}</td></tr>`);
       }
     }
-    setTable(['PARTICIPANT', 'SCORE', 'ENREGISTRÉ', ''], rows, onlyTodo && state.athletes.length ? 'Tous les scores de ce WOD sont saisis.' : 'Ajoutez des participants dans l’onglet 1.');
+    const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
+    setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', ''], rows, onlyTodo && state.athletes.length ? 'Tous les scores de ce WOD sont saisis.' : 'Ajoutez des participants dans l’onglet 1.');
   }
   // Colonne « Enregistré » : le score, « À saisir » ou « Forfait ».
   function savedText(w: Workout, a: Athlete): string {
@@ -287,12 +296,12 @@ namespace Wod {
     const get = (f: string): string => (row.querySelector(`[data-field="${f}"]`) as HTMLInputElement | null)?.value ?? '';
     try {
       // Vérifier d’abord : un score ambigu est refusé et rien n’est modifié.
-      const score = buildScore(w, { timeMs: w.type === 'time' ? Saisie.duration(get('time')) : null, reps: get('reps'), rounds: get('rounds'), rest: get('rest'), kg: get('kg') });
+      const score = buildScore(w, { timeMs: w.type === 'time' ? Saisie.duration(get('time'), shortTime(w)) : null, reps: get('reps'), rounds: get('rounds'), rest: get('rest'), kg: get('kg') });
       row.querySelectorAll('input').forEach(i => i.classList.remove('invalid'));
       const scores = state.scores[w.id] ??= {};
       if (score) scores[athleteId] = score; else delete scores[athleteId];
       if (!save()) return;
-      if (w.type === 'time') { const f = row.querySelector<HTMLInputElement>('[data-field="time"]'); if (f) f.value = Saisie.fromMs(score?.timeMs); }
+      if (w.type === 'time') { const f = row.querySelector<HTMLInputElement>('[data-field="time"]'); if (f) f.value = Saisie.fromMs(score?.timeMs, shortTime(w)); }
       const a = state.athletes.find(x => x.id === athleteId);
       if (a) $(`saved-${athleteId}`).innerHTML = savedText(w, a);
     } catch (error) {
@@ -307,7 +316,7 @@ namespace Wod {
     const cats = groupsForLevel(state, rankingLevel);
     if (!cats.includes(rankingCat)) rankingCat = cats[0] ?? '';
     if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab)) rankingTab = 'general';
-    chips('chips', [{ key: 'general', label: 'Classement général' }, ...state.workouts.map(w => ({ key: w.id, label: w.name }))], rankingTab, 'rank-tab');
+    wodPicker([{ key: 'general', label: 'Classement général', sub: state.method === 'places' ? 'Somme des places' : 'Total des points' }, ...state.workouts.map(wodTab)], rankingTab, 'rank-tab');
     chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => groupChip(c, rankingLevel)), rankingCat, 'rank-cat');
     if (!rankingCat) { heading('Classements', ''); setTable([], [], 'Ajoutez des participants et des scores.'); return; }
     const cat = rankingCat;
