@@ -183,7 +183,7 @@ namespace PaceApp {
   function nameCell(e: Pace.Entry): string {
     const names = `<span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}`;
     // Dans l’onglet Scores, tout se fait sur la ligne : le nom n’ouvre pas de fenêtre.
-    return view === 'scores' ? `<td><span class="score-name duo-names">${names}</span></td>` : `<td><button class="names-button duo-names" data-action="${view === 'participants' ? 'edit' : 'result'}" data-id="${esc(e.id)}">${names}</button></td>`;
+    return view === 'scores' ? `<td class="name-col"><span class="score-name duo-names">${names}</span></td>` : `<td class="name-col"><button class="names-button duo-names" data-action="${view === 'participants' ? 'edit' : 'result'}" data-id="${esc(e.id)}">${names}</button></td>`;
   }
   function arrivalText(e: Pace.Entry): string {
     return e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`;
@@ -191,19 +191,23 @@ namespace PaceApp {
   const PEN = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>';
   const TRASH = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
   function resultCells(e: Pace.Entry): string {
-    return `<td class="recorded-time">${arrivalText(e)}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actionButton('result', e.id, e.status === 'abandoned' || e.status === 'withdrawn' ? 'Modifier le statut' : e.arrivedAt === null ? 'Saisir le résultat' : 'Corriger')}${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}${actionButton('edit', e.id, '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>', 'icon', `Modifier l’inscription de ${label(e)}`)}</div></td>`;
+    return `<td class="recorded-time">${arrivalText(e)}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}</div></td>`;
   }
   // Onglet Participants : on gère l’inscription (modifier, supprimer) ; les résultats se saisissent dans Scores.
   function participantCells(e: Pace.Entry): string {
     return `<td><div class="row-actions">${actionButton('edit', e.id, PEN, 'icon', `Modifier l’inscription de ${label(e)}`)}${actionButton('delete', e.id, TRASH, 'icon', `Supprimer l’inscription de ${label(e)}`)}</div></td>`;
   }
   // Onglet Scores : l’heure d’arrivée se tape dans la case, le reste se fait avec les boutons de la ligne.
+  let unlockedId = '';
   function scoreCells(e: Pace.Entry): string {
     const out = e.status === 'abandoned' || e.status === 'withdrawn';
     // Même case d’heure que l’heure de départ de l’inscription, avec les secondes.
-    const arrival = `<div class="arrival-entry"><input class="score-time" type="time" step="1" data-arrival="${esc(e.id)}" value="${e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt)}" aria-label="Heure d’arrivée de ${esc(label(e))}"></div>`;
+    // Un temps enregistré est verrouillé : le crayon le rend modifiable.
+    const locked = e.status === 'finished' && unlockedId !== e.id;
+    const arrival = `<div class="arrival-entry"><input class="score-time" type="time" step="1" data-arrival="${esc(e.id)}" value="${e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt)}" aria-label="Heure d’arrivée de ${esc(label(e))}"${locked ? ' disabled' : ''}></div>`;
     const actions = [
       e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : '',
+      locked ? actionButton('unlock', e.id, PEN, 'icon', `Modifier le temps de ${label(e)}`) : '',
       out ? actionButton('reinstate', e.id, 'Remettre en course') : actionButton('withdraw', e.id, 'Forfait'),
       e.status === 'finished' ? actionButton('clear', e.id, TRASH, 'icon', `Effacer le résultat de ${label(e)}`) : ''
     ].join('');
@@ -244,7 +248,7 @@ namespace PaceApp {
     $('format-chips').hidden = !race;
     $('rank-heading').hidden = view !== 'results';
     $('arrival-heading').hidden = $('total-heading').hidden = view === 'participants';
-    $('list-add').hidden = view !== 'participants';
+    $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
     $('show-podium-button').hidden = view === 'participants' || view === 'live';
     $('rank-heading').textContent = finalResults ? 'RANG' : 'RANG PROVISOIRE';
     $<HTMLSelectElement>('sort').disabled = view === 'results'; $('sort').hidden = view === 'results';
@@ -254,7 +258,7 @@ namespace PaceApp {
     $('undo-button').title = state.history.at(-1)?.label ? `Annuler : ${state.history.at(-1)!.label.replace(/abandon/gi, 'Forfait')}` : 'Aucune modification à annuler';
     $('empty-state').hidden = entries.length !== 0 || view === 'results'; $<HTMLButtonElement>('export-button').disabled = view === 'results' ? !resultRanking().length : !entries.length;
     $<HTMLButtonElement>('import-button').disabled = !race;
-    $<HTMLButtonElement>('template-button').disabled = !race; $<HTMLButtonElement>('template-csv-button').disabled = !race;
+    $<HTMLButtonElement>('template-button').disabled = $<HTMLButtonElement>('list-template').disabled = !race;
     $<HTMLButtonElement>('excel-help-button').disabled = !race;
     $('settings-event-context').textContent = race ? `${race.title} · ${raceLabel(race)} · ${eventFormatLabel(race)}` : 'Créez un événement pour préparer ou exporter ses fichiers.';
     $('export-button').textContent = view === 'results' ? 'Exporter le classement (Excel)' : 'Exporter la liste (Excel)';
@@ -267,7 +271,7 @@ namespace PaceApp {
     let previousFormat = '';
     $('entries-body').innerHTML = list.map(e => {
       const key = `${e.level}:${Pace.formatKey(e)}`, group = view === 'results' && (activeFormat === 'all' || !!race?.levels.length && !activeLevel) && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.groupLabel(e.level, Pace.formatLabel(e)))}</th></tr>` : ''; previousFormat = key;
-      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}${nameCell(e)}<td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td>${view === 'scores' ? scoreCells(e) : view === 'participants' ? participantCells(e) : resultCells(e)}</tr>`;
+      return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}${nameCell(e)}<td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td>${view === 'scores' || view === 'live' ? scoreCells(e) : view === 'participants' ? participantCells(e) : resultCells(e)}</tr>`;
     }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : view === 'participants' ? 4 : 6}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
     const focusedEntries = view === 'results' ? list : entries;
     if (!focusedEntries.some(e => e.id === focusId)) focusId = focusedEntries.find(e => !Pace.isResolved(e))?.id ?? focusedEntries.at(-1)?.id ?? '';
@@ -635,10 +639,6 @@ namespace PaceApp {
   }
   function templateRows(race: Pace.Race): string[][] { return [templateColumns(race).map(c => c.header)]; }
   // Modèle CSV pour Excel en français : séparateur « ; », accents conservés.
-  function exportCsvTemplate(): void {
-    const race = currentRace(); if (!race) { openRace(); return; }
-    download(Pace.encodeCSV(templateRows(race)), 'soundcrossing-modele.csv', 'text/csv;charset=utf-8');
-  }
   function exportExcelTemplate(): void {
     const race = currentRace(); if (!race) { openRace(); return; }
     try { Modele.download(Modele.workbook(templateColumns(race)), 'soundcrossing-modele.xlsx'); }
@@ -666,7 +666,7 @@ namespace PaceApp {
       const race = currentRace(); if (!race) throw Error('Créez d’abord une course.'); importRaceId = race.id;
       $('import-course').textContent = `Ajouter à « ${race.title} » (${raceLabel(race)}). Formats acceptés : ${race.format === 'DUO' ? 'Duo HH/FF/HF' : race.format === 'SOLO' ? 'Solo H/F' : 'Solo H/F et Duo HH/FF/HF'}.${race.levels.length ? ' Colonne Niveau : Open ou Pro.' : ''} Première ligne du fichier : noms des colonnes.`;
       if (file.size > 10 * 1024 * 1024) throw Error('Fichier trop volumineux (maximum 10 Mo).');
-      if (!/\.(xlsx|xls|csv|tsv)$/i.test(file.name)) throw Error('Choisissez un fichier Excel, CSV ou TSV.');
+      if (!/\.(xlsx|xls)$/i.test(file.name)) throw Error('Choisissez un fichier Excel (.xlsx).');
       const buffer = await file.arrayBuffer();
       importBook = /\.(csv|tsv)$/i.test(file.name)
         ? XLSX.read(Pace.decodeDelimited(buffer), { type: 'string', raw: true })
@@ -750,10 +750,11 @@ namespace PaceApp {
     try {
       const time = Saisie.clockTime(input.value), current = entry.arrivedAt === null ? '' : Pace.timeOfDay(entry.arrivedAt);
       if (!time) { input.value = current; if (current) toast('Pour retirer ce résultat, utilisez la corbeille de la ligne.'); return; }
-      if (time === current && entry.status === 'finished') { input.value = current; keepFocus(() => true, nextId); return; }
+      if (time === current && entry.status === 'finished') { input.value = current; if (unlockedId === id) { unlockedId = ''; render(); } keepFocus(() => true, nextId); return; }
       let result: Pace.ArrivalResult;
       try { result = Pace.calculateResultArrival(raceOf(entry), entry, time); }
       catch (error) { throw error instanceof Error && error.message.includes('après minuit') ? Error('L’heure d’arrivée est avant le départ. Vérifiez l’heure tapée.') : error; }
+      if (unlockedId === id) unlockedId = '';
       keepFocus(() => commit(`résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id)!; Object.assign(e, result); e.status = 'finished'; e.resultMode = 'arrival'; }), nextId);
     } catch (error) { input.classList.add('invalid'); toast(error instanceof Error ? error.message : 'Heure invalide.', true); }
   }
@@ -787,6 +788,7 @@ namespace PaceApp {
     else if (action === 'reinstate') setStatusInline(id, 'waiting');
     else if (action === 'clear') clearResultInline(id);
     else if (action === 'delete') deleteEntryInline(id);
+    else if (action === 'unlock') { unlockedId = id; render(); document.querySelector<HTMLInputElement>(`[data-arrival="${CSS.escape(id)}"]`)?.focus(); }
     else if (action === 'podium') openPodium(button.dataset.raceId ?? '', button.dataset.format as Pace.RankingFormat, button.dataset.level ?? '');
   }
   document.addEventListener('click', handleAction);
@@ -816,7 +818,7 @@ namespace PaceApp {
   $('new-race-button').addEventListener('click', () => openRace());
   $('race-selector').addEventListener('change', () => { selectedRaceId = $<HTMLSelectElement>('race-selector').value; activeFormat = 'all'; focusId = ''; $<HTMLInputElement>('search').value = ''; rememberEvent(); render(); });
   $('template-button').addEventListener('click', exportExcelTemplate);
-  $('template-csv-button').addEventListener('click', exportCsvTemplate);
+  $('list-template').addEventListener('click', exportExcelTemplate);
   $('excel-help-button').addEventListener('click', openExcelHelp);
   $('excel-help-template').addEventListener('click', exportExcelTemplate);
   $('export-button').addEventListener('click', () => exportExcel());
