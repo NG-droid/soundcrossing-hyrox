@@ -19,3 +19,7 @@
 .wod-type-choice{display:grid;grid-template-columns:1fr 1fr}
 .event-format-choice>label>span small{line-height:1.4}
 .group-row td{text-align:left!important;background:#efefeb;font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding-top:10px!important;padding-bottom:10px!important}
+/* Temps du WOD : mêmes cases hh : mm : ss que le temps total de l’Hyrox. */
+.score-inputs .duration-clock{flex:0 0 auto;background:#fff;border-color:#9fa3a9}
+.score-inputs .duration-clock input{width:34px;padding:9px 2px;border:0;border-radius:0;background:transparent;text-align:center}
+.score-inputs .duration-clock input.invalid{background:#fff0f0}

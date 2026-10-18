@@ -279,7 +279,7 @@ var PaceApp;
             activeLevel = '';
         const levelEntries = entries.filter(e => !activeLevel || e.level === activeLevel);
         $('level-chips').hidden = !race?.levels.length;
-        $('level-chips').innerHTML = race?.levels.length ? [{ key: '', label: 'Tous les niveaux' }, ...race.levels.map(l => ({ key: l, label: l }))].map(option => `<button class="format-chip ${activeLevel === option.key ? 'active' : ''}" data-level-filter="${esc(option.key)}" aria-pressed="${activeLevel === option.key}">${option.label}<small>${entries.filter(e => !option.key || e.level === option.key).length}</small></button>`).join('') : '';
+        $('level-chips').innerHTML = race?.levels.length ? [{ key: '', label: 'Tous les niveaux' }, ...race.levels.map(l => ({ key: l, label: l }))].map(option => `<button class="format-chip ${option.key ? `chip-level-${option.key.toLowerCase()}` : ''} ${activeLevel === option.key ? 'active' : ''}" data-level-filter="${esc(option.key)}" aria-pressed="${activeLevel === option.key}">${option.label}<small>${entries.filter(e => !option.key || e.level === option.key).length}</small></button>`).join('') : '';
         const running = entries.filter(e => !Pace.isResolved(e)).length, finished = entries.filter(e => e.status === 'finished').length;
         const finalResults = Pace.eventResultsFinal(state.session, race);
         $('results-progress').textContent = finalResults ? 'Résultats complets · Classements définitifs' : `${running} inscription${running > 1 ? 's' : ''} à compléter · Classements provisoires`;
@@ -305,7 +305,7 @@ var PaceApp;
         $('view-description').textContent = view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
         $('pending-filter').classList.toggle('active', view === 'live');
         $('pending-filter').setAttribute('aria-pressed', String(view === 'live'));
-        $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
+        $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${option.key === 'all' ? '' : `chip-fmt-${option.key}`} ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
         $('format-chips').hidden = !race;
         $('rank-heading').hidden = view !== 'results';
         $('rank-heading').textContent = finalResults ? 'RANG' : 'RANG PROVISOIRE';
@@ -879,13 +879,18 @@ var PaceApp;
         $('excel-help-template').disabled = !race;
         $('excel-help-dialog').showModal();
     }
-    function templateRows(race) {
-        const rows = [['Solo H', 'Alex Martin', '', '09:00'], ['Solo F', 'Manon Simon', '', '09:05'], ['Duo HH', 'Hugo Robert', 'Tom Garcia', '09:10'], ['Duo FF', 'Emma Durand', 'Léa Moreau', '09:15'], ['Duo HF', 'Lucas Petit', 'Zoé Bernard', '09:20']];
-        const kept = rows.filter(row => race.format === 'MIXED' || row[0].startsWith(race.format === 'DUO' ? 'Duo' : 'Solo'));
-        if (!race.levels.length)
-            return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ'], ...kept];
-        return [['Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Niveau'], ...kept.map((row, i) => [...row, i % 2 ? 'Pro' : 'Open'])];
+    // Modèle vierge : seulement les colonnes. Le fichier Excel ajoute des listes déroulantes et un onglet Légende.
+    function templateColumns(race) {
+        const formats = ['Solo H', 'Solo F', 'Duo HH', 'Duo FF', 'Duo HF'].filter(f => race.format === 'MIXED' || f.startsWith(race.format === 'DUO' ? 'Duo' : 'Solo'));
+        return [
+            { header: 'Format', choices: formats, help: 'Le format de l’inscription : Solo H ou F, Duo HH, FF ou HF (HF quel que soit l’ordre des noms).', width: 18 },
+            { header: 'Participant 1', help: 'Prénom et nom.', width: 26 },
+            { header: 'Participant 2', help: 'Prénom et nom du partenaire, pour un duo. Laisser vide pour un solo.', width: 26 },
+            { header: 'Heure de départ', help: 'Heure à la date de l’événement, par exemple 09:00 ou 09:00:30.', width: 18 },
+            ...(race.levels.length ? [{ header: 'Niveau', choices: race.levels, help: 'Open (charges standard) ou Pro (charges lourdes).', width: 12 }] : []),
+        ];
     }
+    function templateRows(race) { return [templateColumns(race).map(c => c.header)]; }
     // Modèle CSV pour Excel en français : séparateur « ; », accents conservés.
     function exportCsvTemplate() {
         const race = currentRace();
@@ -894,6 +899,19 @@ var PaceApp;
             return;
         }
         download(Pace.encodeCSV(templateRows(race)), 'soundcrossing-modele.csv', 'text/csv;charset=utf-8');
+    }
+    function exportExcelTemplate() {
+        const race = currentRace();
+        if (!race) {
+            openRace();
+            return;
+        }
+        try {
+            Modele.download(Modele.workbook(templateColumns(race)), 'soundcrossing-modele.xlsx');
+        }
+        catch {
+            toast('Modèle Excel impossible. Utilisez le modèle CSV.', true);
+        }
     }
     function exportExcel(template = false) {
         try {
@@ -1072,10 +1090,10 @@ var PaceApp;
     ['empty-add', 'list-add'].forEach(id => $(id).addEventListener('click', () => openEntry()));
     $('new-race-button').addEventListener('click', () => openRace());
     $('race-selector').addEventListener('change', () => { selectedRaceId = $('race-selector').value; activeFormat = 'all'; focusId = ''; $('search').value = ''; rememberEvent(); render(); });
-    $('template-button').addEventListener('click', () => exportExcel(true));
+    $('template-button').addEventListener('click', exportExcelTemplate);
     $('template-csv-button').addEventListener('click', exportCsvTemplate);
     $('excel-help-button').addEventListener('click', openExcelHelp);
-    $('excel-help-template').addEventListener('click', () => exportExcel(true));
+    $('excel-help-template').addEventListener('click', exportExcelTemplate);
     $('export-button').addEventListener('click', () => exportExcel());
     $('csv-final-button').addEventListener('click', exportFinalCSV);
     $('show-podium-button').addEventListener('click', openPodiumChooser);

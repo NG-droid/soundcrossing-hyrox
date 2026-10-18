@@ -78,8 +78,8 @@ namespace Wod {
   function heading(title: string, description: string, actions = ''): void {
     $('view-title').textContent = title; $('view-description').textContent = description; $('view-actions').innerHTML = actions;
   }
-  function chips(target: string, items: { key: string; label: string }[], active: string, attr: string): void {
-    $(target).innerHTML = items.map(i => `<button class="format-chip${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
+  function chips(target: string, items: { key: string; label: string; css?: string }[], active: string, attr: string): void {
+    $(target).innerHTML = items.map(i => `<button class="format-chip${i.css ? ` ${i.css}` : ''}${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
   }
 
   function badge(a: Athlete): string { const c = category(a); return `<span class="format-badge fmt-${c}">${esc(categoryLabel(c))}</span>`; }
@@ -100,10 +100,10 @@ namespace Wod {
   }
   function renderAthletes(): void {
     const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
-    heading('Participants', help, `<button class="button" data-action="import-template" title="Fichier d’exemple à remplir dans Excel">Modèle CSV</button><button class="button" data-action="import-athletes" title="Fichier CSV ou Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (CSV / Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
-    const rows = [...state.athletes].sort((a, b) => a.bib.localeCompare(b.bib, 'fr', { numeric: true })).map(a =>
-      `<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
-    setTable(['DOSSARD', 'PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
+    heading('Participants', help, `<button class="button" data-action="import-template-xlsx" title="Fichier vierge avec listes déroulantes et légende">Modèle Excel</button><button class="button" data-action="import-template" title="Fichier vierge, seulement les colonnes">Modèle CSV</button><button class="button" data-action="import-athletes" title="Fichier CSV ou Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (CSV / Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
+    const rows = state.athletes.map(a =>
+      `<tr><td><strong>${esc(athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+    setTable(['PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
   }
 
   function workoutDetails(w: Workout): string {
@@ -129,7 +129,12 @@ namespace Wod {
     const field = (name: string, value: number | string | undefined, ph: string, mode = 'numeric'): string =>
       `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
     if (w.type === 'time') {
-      const cap = `${field('time', s?.timeMs !== undefined ? clock(s.timeMs) : '', 'Temps 7:45', 'text')}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
+      // Mêmes cases que le temps total de l’Hyrox : hh : mm : ss.
+      const [h, m, sec] = timeFields(s?.timeMs);
+      const clockField = (name: string, value: string, ph: string, label: string, max: number): string =>
+        `<input type="number" min="0" max="${max}" step="1" data-score="${a.id}" data-field="${name}" value="${esc(value)}" placeholder="${ph}" inputmode="numeric" aria-label="${label}">`;
+      const time = `<div class="duration-clock" role="group" aria-label="Temps">${clockField('time-h', h, 'hh', 'Heures', 9)}<span aria-hidden="true">:</span>${clockField('time-m', m, 'mm', 'Minutes', 59)}<span aria-hidden="true">:</span>${clockField('time-s', sec, 'ss', 'Secondes', 59)}</div>`;
+      const cap = `${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites')}`;
       return `<div class="score-inputs">${cap}</div>`;
     }
     if (w.type === 'load') return `<div class="score-inputs">${field('kg', s?.kg, 'Kg', 'decimal')}<span>kg</span></div>`;
@@ -143,6 +148,12 @@ namespace Wod {
   // Niveaux qui ont au moins un inscrit, dans l’ordre de l’événement.
   function levelsUsed(): string[] { return state.levels.filter(l => state.athletes.some(a => a.level === l)); }
   function shortGroup(g: string, level: string): string { return level ? g.slice(level.length + 3) : g; }
+  // Mêmes couleurs que les étiquettes : niveau (Scaled bleu, RX rouge) et format (Solo H bleu…).
+  const levelChip = (l: string): { key: string; label: string; css: string } => ({ key: l, label: l, css: `chip-level-${l.toLowerCase()}` });
+  const groupChip = (g: string, level: string): { key: string; label: string; css: string } => {
+    const a = state.athletes.find(x => group(x) === g);
+    return { key: g, label: shortGroup(g, level), css: a ? `chip-fmt-${category(a)}` : '' };
+  };
   function renderScores(): void {
     const w = currentWod();
     heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée).` : 'Ajoutez d’abord un WOD.');
@@ -152,18 +163,18 @@ namespace Wod {
     // Filtre par niveau (RX, Scaled) quand l’événement en a plusieurs.
     const levels = levelsUsed();
     if (!levels.includes(scoreLevel)) scoreLevel = '';
-    if (levels.length > 1) chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(l => ({ key: l, label: l }))], scoreLevel, 'score-level');
+    if (levels.length > 1) chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(levelChip)], scoreLevel, 'score-level');
     const groups = groupsForLevel(state, scoreLevel);
     if (scoreGroup !== 'all' && !groups.includes(scoreGroup)) scoreGroup = 'all';
-    if (groups.length > 1) chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: shortGroup(g, scoreLevel) }))], scoreGroup, 'score-group');
+    if (groups.length > 1) chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => groupChip(g, scoreLevel))], scoreGroup, 'score-group');
     const rows: string[] = [];
     for (const g of groups) {
       if (scoreGroup !== 'all' && g !== scoreGroup) continue;
-      if (groups.length > 1) rows.push(`<tr class="group-row"><td colspan="4">${esc(g)}</td></tr>`);
-      for (const a of state.athletes.filter(x => group(x) === g).sort((x, y) => x.bib.localeCompare(y.bib, 'fr', { numeric: true })))
-        rows.push(`<tr><td>${esc(a.bib)}</td><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
+      if (groups.length > 1) rows.push(`<tr class="group-row"><td colspan="3">${esc(g)}</td></tr>`);
+      for (const a of state.athletes.filter(x => group(x) === g))
+        rows.push(`<tr><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
     }
-    setTable(['DOSSARD', 'PARTICIPANT', 'SCORE', 'ENREGISTRÉ'], rows, 'Ajoutez des participants dans l’onglet 1.');
+    setTable(['PARTICIPANT', 'SCORE', 'ENREGISTRÉ'], rows, 'Ajoutez des participants dans l’onglet 1.');
   }
   function saveScore(input: HTMLInputElement): void {
     const w = currentWod(); const athleteId = input.dataset.score ?? '';
@@ -173,7 +184,7 @@ namespace Wod {
     try {
       const score: Score = {};
       if (w.type === 'time') {
-        const t = parseTime(get('time')), reps = parseNumber(get('reps'), 'Reps');
+        const t = timeFromFields(get('time-h'), get('time-m'), get('time-s')), reps = parseNumber(get('reps'), 'Reps');
         if (t !== null) score.timeMs = t; else if (reps !== null) score.reps = Math.round(reps);
         if (t !== null && w.capMinutes && t > w.capMinutes * 60000) throw Error(`Ce temps dépasse le time cap de ${w.capMinutes} min : saisissez plutôt les reps faites.`);
         if (score.reps !== undefined && w.totalReps && score.reps >= w.totalReps) throw Error(`Avec ${score.reps} reps le WOD est terminé : saisissez le temps.`);
@@ -188,6 +199,7 @@ namespace Wod {
       row.querySelectorAll('input').forEach(i => i.classList.remove('invalid'));
       const scores = state.scores[w.id] ??= {};
       if (hasScore(w, score)) scores[athleteId] = score; else delete scores[athleteId];
+      if (w.type === 'time') timeFields(score.timeMs).forEach((value, i) => { const f = row.querySelector<HTMLInputElement>(`[data-field="time-${'hms'[i]}"]`); if (f) f.value = value; });
       save();
       $(`saved-${athleteId}`).textContent = scoreText(w, scores[athleteId]);
     } catch (error) {
@@ -198,25 +210,25 @@ namespace Wod {
   function renderRanking(): void {
     const levels = levelsUsed();
     if (!levels.includes(rankingLevel)) rankingLevel = levels.length > 1 ? levels[0]! : '';
-    if (levels.length > 1) chips('chips2', levels.map(l => ({ key: l, label: l })), rankingLevel, 'rank-level');
+    if (levels.length > 1) chips('chips2', levels.map(levelChip), rankingLevel, 'rank-level');
     const cats = groupsForLevel(state, rankingLevel);
     if (!cats.includes(rankingCat)) rankingCat = cats[0] ?? '';
     if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab)) rankingTab = 'general';
     chips('chips', [{ key: 'general', label: 'Classement général' }, ...state.workouts.map(w => ({ key: w.id, label: w.name }))], rankingTab, 'rank-tab');
-    chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => ({ key: c, label: shortGroup(c, rankingLevel) })), rankingCat, 'rank-cat');
+    chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => groupChip(c, rankingLevel)), rankingCat, 'rank-cat');
     if (!rankingCat) { heading('Classements', ''); setTable([], [], 'Ajoutez des participants et des scores.'); return; }
     const cat = rankingCat;
     if (rankingTab === 'general') {
       heading('Classement général', state.method === 'places' ? 'Addition des places sur tous les WOD : le plus petit total gagne.' : 'Table de points (1er = 100, puis −3 par place) : le plus gros total gagne.');
       const rows = generalRanking(state, cat).map(r =>
-        `<tr><td class="rank">${r.rank}</td><td><strong>${esc(athleteLabel(r.athlete))}</strong><div class="muted">Dossard ${esc(r.athlete.bib)}</div></td>${state.workouts.map(w => `<td>${r.places[w.id] === null ? '<span class="muted">—</span>' : `${r.places[w.id]}<sup>e</sup>`}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
+        `<tr><td class="rank">${r.rank}</td><td><strong>${esc(athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? group(r.athlete) : categoryLabel(category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${r.places[w.id] === null ? '<span class="muted">—</span>' : `${r.places[w.id]}<sup>e</sup>`}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
       setTable(['RANG', 'PARTICIPANT', ...state.workouts.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS'], rows, 'Aucun participant dans cette catégorie.');
       return;
     }
     const w = state.workouts.find(x => x.id === rankingTab) as Workout;
     heading(w.name, TYPE_LABELS[w.type]);
     const rows = workoutRanking(state, w, cat).map(p =>
-      `<tr><td class="rank">${p.rank}</td><td><strong>${esc(athleteLabel(p.athlete))}</strong><div class="muted">Dossard ${esc(p.athlete.bib)}</div></td><td class="score-saved">${esc(scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+      `<tr><td class="rank">${p.rank}</td><td><strong>${esc(athleteLabel(p.athlete))}</strong><div class="muted">${esc(p.athlete.level ? group(p.athlete) : categoryLabel(category(p.athlete)))}</div></td><td class="score-saved">${esc(scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${pointsFor(p.rank)} pts</td>` : ''}</tr>`);
     setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
   }
 
@@ -242,7 +254,7 @@ namespace Wod {
     const form = $<HTMLFormElement>('entry-form'); form.reset();
     const f = form.elements as unknown as Record<string, HTMLInputElement>;
     $('entry-title').textContent = a ? 'Modifier l’inscription' : state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant';
-    $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${eventFormatLabel(state.format)}${a ? ` · Dossard ${a.bib}` : ''}`;
+    $('entry-course').textContent = `${state.title} · ${dateLabel(state.date)} · Événement ${eventFormatLabel(state.format)}`;
     $('entry-format-choice').hidden = state.format !== 'MIXED';
     $('entry-level-choice').hidden = !state.levels.length;
     $('entry-level-buttons').innerHTML = state.levels.map(l => `<button type="button" data-level="${esc(l)}" aria-pressed="false">${esc(l)}<small>${esc(LEVEL_HELP[l] ?? '')}</small></button>`).join('');
@@ -340,7 +352,7 @@ namespace Wod {
     const levels = LEVEL_PRESETS[v('levels')] ?? [];
     if (levels.join() !== target.levels.join()) {
       for (const a of target.athletes) {
-        const level = remapLevel(a.level, target.levels, levels);
+        const level = remapLevel(a.level, levels);
         if (level) a.level = level; else delete a.level;
       }
       target.levels = [...levels];
@@ -378,6 +390,7 @@ namespace Wod {
       else if (d.action === 'add-athlete') openAthlete();
       else if (d.action === 'add-workout') openWorkout();
       else if (d.action === 'import-athletes') $('import-file').click();
+      else if (d.action === 'import-template-xlsx') Modele.download(Modele.workbook(importColumns(state)), 'modele-participants-wod.xlsx');
       else if (d.action === 'import-template') download(`modele-participants-wod.csv`, toCsv(importTemplate(state)), 'text/csv;charset=utf-8');
       else if (d.editAthlete) openAthlete(state.athletes.find(a => a.id === d.editAthlete));
       else if (d.editWorkout) openWorkout(state.workouts.find(w => w.id === d.editWorkout));

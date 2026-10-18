@@ -26,7 +26,7 @@ var Wod;
     function categoryLabel(c) { return c.length === 1 ? `Solo ${c}` : `Duo ${c}`; }
     Wod.categoryLabel = categoryLabel;
     // En WOD, les niveaux sont RX et Scaled (Pro / Open, c’est l’Hyrox).
-    Wod.LEVEL_PRESETS = { none: [], rx: ['RX', 'Scaled'] };
+    Wod.LEVEL_PRESETS = { none: [], rx: ['Scaled', 'RX'] };
     // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
     function group(a) { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
     Wod.group = group;
@@ -53,6 +53,29 @@ var Wod;
         return seconds * 1000;
     }
     Wod.parseTime = parseTime;
+    // Même saisie que le temps total de l’Hyrox : heures, minutes et secondes dans trois cases.
+    function timeFromFields(hours, minutes, seconds) {
+        const parts = [hours, minutes, seconds].map(v => v.trim());
+        if (parts.every(v => !v))
+            return null;
+        if (parts.some(v => v && !/^\d+$/.test(v)))
+            throw Error('Temps : chiffres entiers uniquement.');
+        const [h, m, sec] = parts.map(v => Number(v || 0));
+        if (m > 59 || sec > 59)
+            throw Error('Temps : minutes et secondes entre 00 et 59.');
+        const ms = ((h * 60 + m) * 60 + sec) * 1000;
+        if (ms <= 0)
+            throw Error('Temps : saisissez une durée.');
+        return ms;
+    }
+    Wod.timeFromFields = timeFromFields;
+    function timeFields(ms) {
+        if (ms === undefined)
+            return ['', '', ''];
+        const s = Math.round(ms / 1000), pad = (n) => String(n).padStart(2, '0');
+        return [s >= 3600 ? String(Math.floor(s / 3600)) : '', pad(Math.floor(s / 60) % 60), pad(s % 60)];
+    }
+    Wod.timeFields = timeFields;
     function parseNumber(text, what) {
         const t = text.trim().replace(',', '.');
         if (!t)
@@ -143,13 +166,14 @@ var Wod;
     }
     Wod.usedGroups = usedGroups;
     // Changement de niveaux : un niveau qui existe encore est gardé ; sinon Pro devient RX et Open devient Scaled.
-    function remapLevel(level, from, to) {
+    function remapLevel(level, to) {
         if (!to.length)
             return undefined;
         if (level && to.includes(level))
             return level;
-        const i = from.indexOf(level ?? '');
-        return to[i < 0 ? 0 : i % 2] ?? to[0];
+        const old = { Pro: 'RX', Open: 'Scaled' };
+        const mapped = old[level ?? ''];
+        return mapped && to.includes(mapped) ? mapped : to[0];
     }
     Wod.remapLevel = remapLevel;
     // Groupes d’un niveau (« RX · Solo H »…), ou tous les groupes si aucun niveau n’est choisi.
@@ -226,12 +250,18 @@ var Wod;
         return { athletes, errors, duplicates };
     }
     Wod.importAthletes = importAthletes;
-    function importTemplate(c) {
-        const level = c.levels[0] ?? '';
-        const rows = [['Solo H', 'Alex Martin', '', level], ['Solo F', 'Manon Simon', '', level], ['Duo HH', 'Hugo Robert', 'Tom Garcia', level], ['Duo FF', 'Emma Durand', 'Léa Moreau', level], ['Duo HF', 'Lucas Petit', 'Zoé Bernard', level]]
-            .filter(r => c.format === 'MIXED' || r[0].startsWith(c.format === 'DUO' ? 'Duo' : 'Solo'));
-        return [c.levels.length ? Wod.IMPORT_HEADERS : Wod.IMPORT_HEADERS.slice(0, 3), ...rows.map(r => c.levels.length ? r : r.slice(0, 3))];
+    // Modèle vierge : les colonnes, avec leurs codes pour la légende et les listes déroulantes du fichier Excel.
+    function importColumns(c) {
+        const formats = ['Solo H', 'Solo F', 'Duo HH', 'Duo FF', 'Duo HF'].filter(f => c.format === 'MIXED' || f.startsWith(c.format === 'DUO' ? 'Duo' : 'Solo'));
+        return [
+            { header: 'Format', choices: formats, help: 'Solo H ou F, Duo HH, FF ou HF (HF quel que soit l’ordre des noms).', width: 18 },
+            { header: 'Participant 1', help: 'Prénom et nom.', width: 26 },
+            { header: 'Participant 2', help: 'Prénom et nom du partenaire, pour un duo. Laisser vide pour un solo.', width: 26 },
+            ...(c.levels.length ? [{ header: 'Niveau', choices: c.levels, help: 'Scaled (version allégée) ou RX (charges et mouvements officiels).', width: 12 }] : []),
+        ];
     }
+    Wod.importColumns = importColumns;
+    function importTemplate(c) { return [importColumns(c).map(col => col.header)]; }
     Wod.importTemplate = importTemplate;
     // Séparateur « ; » pour Excel en français, BOM pour les accents.
     function toCsv(rows) {
@@ -259,11 +289,11 @@ var Wod;
         if (!v || typeof v !== 'object' || !Array.isArray(v.athletes) || !Array.isArray(v.workouts) || typeof v.scores !== 'object' || v.scores === null)
             throw Error('Ce fichier n’est pas une sauvegarde WOD Soundcrossing.');
         const format = v.format === 'SOLO' || v.format === 'DUO' ? v.format : 'MIXED';
-        // Anciens événements en Pro / Open : ils passent en RX / Scaled (Pro → RX, Open → Scaled).
+        // Niveaux toujours dans l’ordre Scaled puis RX. Anciens événements en Pro / Open : Pro → RX, Open → Scaled.
         let levels = Array.isArray(v.levels) ? v.levels.map(String) : [];
-        if (levels.length && levels.join() !== Wod.LEVEL_PRESETS.rx.join()) {
+        if (levels.length) {
             for (const a of v.athletes) {
-                const level = remapLevel(a.level, levels, Wod.LEVEL_PRESETS.rx);
+                const level = remapLevel(a.level, Wod.LEVEL_PRESETS.rx);
                 if (level)
                     a.level = level;
             }
@@ -291,16 +321,16 @@ var Wod;
     Wod.validateStore = validateStore;
     function exportRows(c) {
         const sheets = [];
-        const general = [['Catégorie', 'Rang', 'Dossard', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
+        const general = [['Catégorie', 'Rang', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
         for (const key of usedGroups(c))
             for (const row of generalRanking(c, key))
-                general.push([key, row.rank, row.athlete.bib, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? '—'), row.total]);
+                general.push([key, row.rank, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? '—'), row.total]);
         sheets.push({ name: 'Général', rows: general });
         c.workouts.forEach((w, i) => {
-            const rows = [['Catégorie', 'Rang', 'Dossard', 'Participant', 'Score']];
+            const rows = [['Catégorie', 'Rang', 'Participant', 'Score']];
             for (const key of usedGroups(c))
                 for (const p of workoutRanking(c, w, key))
-                    rows.push([key, p.rank, p.athlete.bib, athleteLabel(p.athlete), scoreText(w, p.score)]);
+                    rows.push([key, p.rank, athleteLabel(p.athlete), scoreText(w, p.score)]);
             const safe = w.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 25).trim() || 'WOD';
             sheets.push({ name: `${i + 1}. ${safe}`, rows });
         });
@@ -330,7 +360,7 @@ var Wod;
             scores.w2[a.id] = { reps: s2[i] };
             scores.w3[a.id] = { kg: s3[i] };
         });
-        return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', levels: ['RX', 'Scaled'], athletes, workouts, scores };
+        return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', levels: ['Scaled', 'RX'], athletes, workouts, scores };
     }
     Wod.demo = demo;
 })(Wod || (Wod = {}));
