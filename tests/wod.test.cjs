@@ -171,3 +171,21 @@ test('statuses separate scores to enter from forfeits, and the ranking stays pro
   assert.equal(sheets.at(-1).name, 'Règles');
   assert.ok(sheets[1].rows.some(r => r[3] === 'Forfait'));
 });
+
+test('finale: only finalists, points reset, ties broken by last final WOD then qualif rank', () => {
+  const q = { id: 'q', name: 'Q', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null };
+  const f1 = { id: 'f1', name: 'F1', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null, phase: 'final' };
+  const f2 = { id: 'f2', name: 'F2', description: '', type: 'load', capMinutes: null, totalReps: null, repsPerRound: null, phase: 'final' };
+  const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: ['a', 'b', 'c', 'd'].map(id => athlete(id)), workouts: [q, f1, f2],
+    scores: { q: { a: { kg: 100 }, b: { kg: 90 }, c: { kg: 80 }, d: { kg: 70 } }, f1: { a: { kg: 50 }, b: { kg: 60 }, d: { kg: 99 } }, f2: { a: { kg: 60 }, b: { kg: 50 } } } };
+  assert.deepEqual(ids(W.generalRanking(c, 'Solo H')), ['a:1', 'b:2', 'c:3', 'd:4']);
+  c.finalists = Array.from(W.qualifyTop(c, 'Solo H', 2));
+  assert.deepEqual(c.finalists, ['a', 'b']);
+  // d n’est pas qualifié : son score de finale ne compte pas. a et b : 3 places chacun, a gagne le dernier WOD.
+  assert.deepEqual(ids(W.generalRanking(c, 'Solo H', 'final')), ['a:1', 'b:2']);
+  assert.equal(W.pendingScores(c, 'Solo H', 'final'), 0);
+  const back = W.validate(JSON.parse(JSON.stringify({ ...c, finalists: ['a', 'zz'] })));
+  assert.deepEqual(Array.from(back.finalists), ['a']);
+  assert.equal(back.workouts[1].phase, 'final');
+  assert.deepEqual(Array.from(W.exportRows(c), s => s.name).slice(0, 2), ['Qualifs', 'Finale']);
+});

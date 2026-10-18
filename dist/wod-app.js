@@ -26,6 +26,7 @@ var Wod;
     let onlyTodo = false;
     let rankingLevel = '';
     let entryLevel = '';
+    let onlyFinalists = false;
     // Mêmes protections que l’app Hyrox : on n’écrase jamais une version plus récente d’une autre fenêtre,
     // l’écran n’affiche une modification qu’une fois enregistrée, et la version précédente reste en secours.
     let loadedRaw = null, storageBlocked = false;
@@ -282,7 +283,12 @@ var Wod;
     function renderAthletes() {
         const help = state.format === 'SOLO' ? 'Inscrivez les participants. La catégorie H ou F est calculée toute seule.' : state.format === 'DUO' ? 'Inscrivez les duos. La catégorie HH, FF ou HF est calculée toute seule.' : 'Inscrivez les solos et les duos. La catégorie (H, F, HH, FF, HF) est calculée toute seule.';
         heading('Participants', help, `<button class="button" data-action="import-template-xlsx" title="Fichier vierge avec listes déroulantes et légende">Modèle Excel</button><button class="button" data-action="import-athletes" title="Fichier Excel : Format, Participant 1, Participant 2${state.levels.length ? ', Niveau' : ''}">Importer (Excel)</button><button class="button primary" data-action="add-athlete">+ ${state.format === 'DUO' ? 'Ajouter un duo' : 'Ajouter un participant'}</button>`);
-        const rows = state.athletes.map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong></td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+        const finalists = state.athletes.filter(a => Wod.isFinalist(state, a)).length;
+        if (!finalists)
+            onlyFinalists = false;
+        if (finalists)
+            $('chips').innerHTML = `<button class="format-chip${onlyFinalists ? ' active' : ''}" data-action="only-finalists" aria-pressed="${onlyFinalists}">Finalistes seulement (${finalists})</button>`;
+        const rows = state.athletes.filter(a => !onlyFinalists || Wod.isFinalist(state, a)).map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong>${Wod.isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
         setTable(['PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
     }
     function workoutDetails(w) {
@@ -296,8 +302,8 @@ var Wod;
         return parts.join(' · ');
     }
     function renderWorkouts() {
-        heading('WOD', 'Ajoutez chaque épreuve et choisissez comment elle se classe.', '<button class="button primary" data-action="add-workout">+ Ajouter un WOD</button>');
-        const rows = state.workouts.map((w, i) => `<tr><td class="rank">${i + 1}</td><td><strong>${esc(w.name)}</strong><div class="wod-desc">${esc(w.description)}</div></td><td>${esc(Wod.TYPE_LABELS[w.type])}<div class="muted">${esc(workoutDetails(w))}</div></td><td class="actions"><button class="button compact" data-edit-workout="${w.id}">Modifier</button><button class="button compact danger" data-delete-workout="${w.id}">Supprimer</button></td></tr>`);
+        heading('WOD', 'Ajoutez chaque épreuve et choisissez comment elle se classe. Une épreuve de Finale est réservée aux qualifiés.', '<button class="button primary" data-action="add-workout">+ Ajouter un WOD</button>');
+        const rows = state.workouts.map((w, i) => `<tr><td class="rank">${i + 1}</td><td><strong>${esc(w.name)}</strong>${w.phase === 'final' ? ' <span class="finalist-badge">Finale</span>' : ''}<div class="wod-desc">${esc(w.description)}</div></td><td>${esc(Wod.TYPE_LABELS[w.type])}<div class="muted">${esc(workoutDetails(w))}</div></td><td class="actions"><button class="button compact" data-edit-workout="${w.id}">Modifier</button><button class="button compact danger" data-delete-workout="${w.id}">Supprimer</button></td></tr>`);
         setTable(['N°', 'WOD', 'CLASSEMENT', ''], rows, 'Aucun WOD pour l’instant.');
     }
     function currentWod() {
@@ -344,7 +350,7 @@ var Wod;
     };
     function renderScores() {
         const w = currentWod();
-        const todo = w ? state.athletes.filter(a => Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
+        const todo = w ? Wod.competitors(state, w).filter(a => Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
         const how = w?.type === 'time' ? ` Saisissez le temps affiché par le chrono (${shortTime(w) ? 'mm:ss' : 'hh:mm:ss'}), pas une heure.${w.capMinutes ? ` Time cap : ${capText(w)}.` : ''}` : '';
         heading('Saisie des scores', w ? `${w.name} — ${Wod.TYPE_LABELS[w.type]}.${how} Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.', w ? `<button class="format-chip${onlyTodo ? ' active' : ''}" data-action="only-todo" aria-pressed="${onlyTodo}">À saisir seulement (${todo})</button>` : '');
         if (state.workouts.length)
@@ -369,7 +375,7 @@ var Wod;
         for (const g of groups) {
             if (scoreGroup !== 'all' && g !== scoreGroup)
                 continue;
-            const list = state.athletes.filter(x => Wod.group(x) === g && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo'));
+            const list = Wod.competitors(state, w).filter(x => Wod.group(x) === g && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo'));
             if (!list.length)
                 continue;
             if (groups.length > 1)
@@ -380,7 +386,8 @@ var Wod;
             }
         }
         const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
-        setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', ''], rows, onlyTodo && state.athletes.length ? 'Tous les scores de ce WOD sont saisis.' : 'Ajoutez des participants dans l’onglet 1.');
+        const none = w.phase === 'final' && !Wod.competitors(state, w).length ? 'Aucun qualifié pour la Finale : qualifiez-les dans l’onglet 4. Classements.' : 'Ajoutez des participants dans l’onglet 1.';
+        setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', ''], rows, onlyTodo && Wod.competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
     }
     // Colonne « Enregistré » : le score, « À saisir » ou « Forfait ».
     function savedText(w, a) {
@@ -453,19 +460,19 @@ var Wod;
         const cat = rankingCat;
         if (!cat)
             return;
-        const general = rankingTab === 'general', w = state.workouts.find(x => x.id === rankingTab);
+        const general = rankingTab === 'general' || rankingTab === 'final', phase = rankingTab === 'final' ? 'final' : 'qualif', w = state.workouts.find(x => x.id === rankingTab);
         const places = general
-            ? Wod.generalRanking(state, cat).map(r => ({ rank: r.rank, athlete: r.athlete, value: state.method === 'places' ? `Total ${r.total}` : `${r.total} pts` }))
+            ? Wod.generalRanking(state, cat, phase).map(r => ({ rank: r.rank, athlete: r.athlete, value: state.method === 'places' ? `Total ${r.total}` : `${r.total} pts` }))
             : w ? Wod.workoutRanking(state, w, cat).map(p => ({ rank: p.rank, athlete: p.athlete, value: Wod.scoreText(w, p.score) })) : [];
         const top = places.filter(p => p.rank <= 3);
         if (!top.length) {
             toast('Aucun score classé dans cette catégorie.');
             return;
         }
-        const pending = general ? Wod.pendingScores(state, cat) : w ? state.athletes.filter(a => Wod.group(a) === cat && Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
+        const pending = general ? Wod.pendingScores(state, cat, phase) : w ? Wod.competitors(state, w).filter(a => Wod.group(a) === cat && Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
         $('podium-event').textContent = state.title;
         $('podium-date').textContent = state.date ? new Date(`${state.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, c => c.toLocaleUpperCase('fr-FR')) : '';
-        $('podium-kicker').textContent = `${general ? 'CLASSEMENT GÉNÉRAL' : w.name.toUpperCase()} · ${pending ? 'PROVISOIRE' : 'FINAL'}`;
+        $('podium-kicker').textContent = `${phase === 'final' && general ? 'FINALE · GRAND GAGNANT' : general ? Wod.hasFinal(state) ? 'QUALIFICATIONS' : 'CLASSEMENT GÉNÉRAL' : w.name.toUpperCase()} · ${pending ? 'PROVISOIRE' : 'FINAL'}`;
         $('podium-category').textContent = cat;
         $('podium-stage').innerHTML = [2, 1, 3].map(rank => {
             const list = top.filter(p => p.rank === rank), metal = rank === 1 ? 'Or' : rank === 2 ? 'Argent' : 'Bronze';
@@ -494,9 +501,12 @@ var Wod;
         const cats = Wod.groupsForLevel(state, rankingLevel);
         if (!cats.includes(rankingCat))
             rankingCat = cats[0] ?? '';
-        if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab))
+        const final = Wod.hasFinal(state);
+        if (rankingTab !== 'general' && !(final && rankingTab === 'final') && !state.workouts.some(w => w.id === rankingTab))
             rankingTab = 'general';
-        wodPicker([{ key: 'general', label: 'Classement général', sub: state.method === 'places' ? 'Somme des places' : 'Total des points' }, ...state.workouts.map(wodTab)], rankingTab, 'rank-tab');
+        const sum = state.method === 'places' ? 'Somme des places' : 'Total des points';
+        wodPicker([{ key: 'general', label: final ? 'Classement qualifs' : 'Classement général', sub: sum }, ...Wod.phaseWorkouts(state, 'qualif').map(wodTab),
+            ...(final ? [{ key: 'final', label: 'Finale', sub: 'Qualifiés · grand gagnant' }, ...Wod.phaseWorkouts(state, 'final').map(wodTab)] : [])], rankingTab, 'rank-tab');
         chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => groupChip(c, rankingLevel)), rankingCat, 'rank-cat');
         if (!rankingCat) {
             heading('Classements', '');
@@ -504,17 +514,23 @@ var Wod;
             return;
         }
         const cat = rankingCat;
-        if (rankingTab === 'general') {
-            const pending = Wod.pendingScores(state, cat);
-            heading(pending ? 'Classement général provisoire' : 'Classement général définitif', `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${Wod.rulesText(state).slice(0, 3).join(' ')}`);
+        if (rankingTab === 'general' || rankingTab === 'final') {
+            const phase = rankingTab === 'final' ? 'final' : 'qualif', wods = Wod.phaseWorkouts(state, phase);
+            const pending = Wod.pendingScores(state, cat, phase), ranking = Wod.generalRanking(state, cat, phase);
+            const name = phase === 'final' ? 'Finale' : final ? 'Classement des qualifs' : 'Classement général';
+            const qualified = state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length;
+            const note = phase === 'final' ? `Points remis à zéro : seuls les WOD de finale comptent. Égalité : meilleure place sur le dernier WOD de finale, puis classement des qualifs.${qualified ? '' : ' Aucun qualifié dans cette catégorie : qualifiez-les dans « Classement qualifs ».'}`
+                : `${Wod.rulesText(state).slice(0, 3).join(' ')}${final ? ` ${qualified} qualifié(s) pour la Finale.` : ''}`;
+            heading(`${name} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${note}`, phase === 'qualif' && final ? '<button class="button primary" data-action="qualify">Qualifier pour la Finale</button>' : '');
             const cell = (w, r) => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${Wod.STATUS_LABELS[Wod.scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
-            podiumFooter(Wod.generalRanking(state, cat).length, pending);
-            const rows = Wod.generalRanking(state, cat).map(r => `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
-            setTable(['RANG', 'PARTICIPANT', ...state.workouts.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS'], rows, 'Aucun participant dans cette catégorie.');
+            podiumFooter(ranking.length, pending);
+            const pick = (a) => `<td>${Wod.isFinalist(state, a) ? `<button class="button compact finalist-on" data-unqualify="${a.id}" title="Retirer de la Finale">✓ Qualifié</button>` : `<button class="button compact" data-qualify-one="${a.id}">Qualifier</button>`}</td>`;
+            const rows = ranking.map(r => `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${wods.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td>${phase === 'qualif' && final ? pick(r.athlete) : ''}</tr>`);
+            setTable(['RANG', 'PARTICIPANT', ...wods.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS', ...(phase === 'qualif' && final ? ['FINALE'] : [])], rows, phase === 'final' ? 'Aucun qualifié dans cette catégorie.' : 'Aucun participant dans cette catégorie.');
             return;
         }
         const w = state.workouts.find(x => x.id === rankingTab);
-        const inCat = state.athletes.filter(a => Wod.group(a) === cat);
+        const inCat = Wod.competitors(state, w).filter(a => Wod.group(a) === cat);
         const todo = inCat.filter(a => Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length;
         heading(w.name, `${Wod.TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
         const label = (a) => `<strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(a.level ? Wod.group(a) : Wod.categoryLabel(Wod.category(a)))}</div>`;
@@ -524,6 +540,38 @@ var Wod;
             if (state.scores[w.id]?.[a.id]?.forfeit)
                 rows.push(`<tr><td class="rank">—</td><td>${label(a)}</td><td><span class="outcome-badge">Forfait</span></td>${state.method === 'points' ? '<td>0 pt</td>' : ''}</tr>`);
         setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
+    }
+    // Qualifiés de la catégorie affichée : les n premiers des qualifs, puis ajustables un par un.
+    function qualify() {
+        const cat = rankingCat;
+        if (!cat)
+            return;
+        const current = state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length;
+        const text = prompt(`Combien de qualifiés pour la Finale en ${cat} ?\n\nLes premiers du classement des qualifs sont qualifiés (ex æquo compris). Vous pourrez ensuite en ajouter ou en retirer un par un.`, String(current || 3));
+        if (text === null)
+            return;
+        const n = Number(text.trim());
+        if (!Number.isInteger(n) || n < 0) {
+            toast('Nombre entier attendu.');
+            return;
+        }
+        state.finalists = Wod.qualifyTop(state, cat, n);
+        if (save()) {
+            render();
+            toast(`${state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length} qualifié(s) en ${cat}.`);
+        }
+    }
+    function setFinalist(id, on) {
+        const a = state.athletes.find(x => x.id === id);
+        if (!a)
+            return;
+        const has = state.workouts.some(w => w.phase === 'final' && state.scores[w.id]?.[id]);
+        if (!on && has && !confirm(`${Wod.athleteLabel(a)} a déjà des scores en Finale. Le retirer quand même ? Ses scores de finale seront gardés mais ne compteront plus.`))
+            return;
+        const list = (state.finalists ?? []).filter(x => x !== id);
+        state.finalists = on ? [...list, id] : list;
+        if (save())
+            render();
     }
     let entryFormat = '';
     let gender1 = '', gender2 = '';
@@ -630,6 +678,7 @@ var Wod;
         f.id.value = w?.id ?? '';
         f.name.value = w?.name ?? `WOD ${state.workouts.length + 1}`;
         form.elements.namedItem('type').value = w?.type ?? 'time';
+        form.elements.namedItem('phase').value = w?.phase === 'final' ? 'final' : 'qualif';
         f.description.value = w?.description ?? '';
         f.capMinutes.value = String(w?.capMinutes ?? '');
         f.totalReps.value = String(w?.totalReps ?? '');
@@ -649,7 +698,7 @@ var Wod;
         const old = state.workouts.find(w => w.id === id);
         if (old && old.type !== type && Object.keys(state.scores[id] ?? {}).length && !confirm('Changer le type efface les scores déjà saisis pour ce WOD. Continuer ?'))
             return;
-        const workout = { id, name: v('name'), description: v('description'), type, capMinutes: n('capMinutes'), totalReps: type === 'time' ? n('totalReps') : null, repsPerRound: type === 'amrap' ? n('repsPerRound') : null };
+        const workout = { id, name: v('name'), description: v('description'), type, capMinutes: n('capMinutes'), totalReps: type === 'time' ? n('totalReps') : null, repsPerRound: type === 'amrap' ? n('repsPerRound') : null, ...(v('phase') === 'final' ? { phase: 'final' } : {}) };
         if (old && old.type !== type)
             delete state.scores[id];
         const i = state.workouts.findIndex(w => w.id === id);
@@ -833,6 +882,16 @@ var Wod;
                 onlyTodo = !onlyTodo;
                 render();
             }
+            else if (d.action === 'only-finalists') {
+                onlyFinalists = !onlyFinalists;
+                render();
+            }
+            else if (d.action === 'qualify')
+                qualify();
+            else if (d.qualifyOne)
+                setFinalist(d.qualifyOne, true);
+            else if (d.unqualify)
+                setFinalist(d.unqualify, false);
             else if (d.forfeit)
                 setForfeit(d.forfeit, true);
             else if (d.reinstate)
