@@ -45,7 +45,7 @@ namespace Wod {
     return a.gender1 === a.gender2 ? a.gender1 === 'H' ? 'HH' : 'FF' : 'HF';
   }
   export function categoryLabel(c: Category): string { return c.length === 1 ? `Solo ${c}` : `Duo ${c}`; }
-  export const LEVEL_PRESETS: Record<string, string[]> = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'] };
+  export const LEVEL_PRESETS: Record<string, string[]> = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'], all: ['RX', 'Scaled', 'Pro', 'Open'] };
   // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
   export function group(a: Athlete): string { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
   export function athleteLabel(a: Athlete): string { return a.format === 'DUO' ? `${a.name1} & ${a.name2}` : a.name1; }
@@ -144,6 +144,17 @@ namespace Wod {
     return [...new Set(sorted.map(group))];
   }
 
+  // Changement de niveaux : un niveau qui existe encore est gardé ; sinon RX ↔ Pro et Scaled ↔ Open.
+  export function remapLevel(level: string | undefined, from: string[], to: string[]): string | undefined {
+    if (!to.length) return undefined;
+    if (level && to.includes(level)) return level;
+    const i = from.indexOf(level ?? '');
+    return to[i < 0 ? 0 : i % 2] ?? to[0];
+  }
+  // Groupes d’un niveau (« RX · Solo H »…), ou tous les groupes si aucun niveau n’est choisi.
+  export function groupsForLevel(c: Competition, level: string): string[] {
+    return usedGroups(c).filter(g => !level || g.startsWith(`${level} · `));
+  }
   // Import de participants depuis un fichier CSV ou Excel. Colonnes : Format, Participant 1, Participant 2, Niveau.
   export const IMPORT_HEADERS = ['Format', 'Participant 1', 'Participant 2', 'Niveau'];
   export interface ImportResult { athletes: Athlete[]; errors: string[]; duplicates: number; }

@@ -25,7 +25,7 @@ var Wod;
     Wod.category = category;
     function categoryLabel(c) { return c.length === 1 ? `Solo ${c}` : `Duo ${c}`; }
     Wod.categoryLabel = categoryLabel;
-    Wod.LEVEL_PRESETS = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'] };
+    Wod.LEVEL_PRESETS = { none: [], rx: ['RX', 'Scaled'], pro: ['Pro', 'Open'], all: ['RX', 'Scaled', 'Pro', 'Open'] };
     // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
     function group(a) { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
     Wod.group = group;
@@ -141,6 +141,21 @@ var Wod;
         return [...new Set(sorted.map(group))];
     }
     Wod.usedGroups = usedGroups;
+    // Changement de niveaux : un niveau qui existe encore est gardé ; sinon RX ↔ Pro et Scaled ↔ Open.
+    function remapLevel(level, from, to) {
+        if (!to.length)
+            return undefined;
+        if (level && to.includes(level))
+            return level;
+        const i = from.indexOf(level ?? '');
+        return to[i < 0 ? 0 : i % 2] ?? to[0];
+    }
+    Wod.remapLevel = remapLevel;
+    // Groupes d’un niveau (« RX · Solo H »…), ou tous les groupes si aucun niveau n’est choisi.
+    function groupsForLevel(c, level) {
+        return usedGroups(c).filter(g => !level || g.startsWith(`${level} · `));
+    }
+    Wod.groupsForLevel = groupsForLevel;
     // Import de participants depuis un fichier CSV ou Excel. Colonnes : Format, Participant 1, Participant 2, Niveau.
     Wod.IMPORT_HEADERS = ['Format', 'Participant 1', 'Participant 2', 'Niveau'];
     const plain = (v) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();

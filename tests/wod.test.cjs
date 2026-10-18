@@ -93,3 +93,15 @@ test('modèle CSV : séparateur point-virgule et colonne Niveau seulement si bes
   assert.ok(csv.startsWith('﻿"Format";"Participant 1";"Participant 2"\r\n"Duo HH"'));
   assert.equal(W.importTemplate({ ...duo, levels: ['Pro', 'Open'] })[0].length, 4);
 });
+
+test('RX, Scaled, Pro et Open dans un même événement, chacun son classement', () => {
+  assert.deepEqual(Array.from(W.LEVEL_PRESETS.all), ['RX', 'Scaled', 'Pro', 'Open']);
+  assert.equal(W.remapLevel('Pro', ['Pro', 'Open'], W.LEVEL_PRESETS.all), 'Pro');
+  assert.equal(W.remapLevel('Open', W.LEVEL_PRESETS.all, ['RX', 'Scaled']), 'Scaled');
+  assert.equal(W.remapLevel('Pro', W.LEVEL_PRESETS.all, ['RX', 'Scaled']), 'RX');
+  assert.equal(W.remapLevel('RX', ['RX', 'Scaled'], []), undefined);
+  const c = { ...W.emptyCompetition('c', 'T', '', 'SOLO'), levels: W.LEVEL_PRESETS.all,
+    athletes: [{ ...athlete('a'), level: 'Pro' }, { ...athlete('b', 'F'), level: 'RX' }, { ...athlete('c'), level: 'Pro' }, { ...athlete('d'), level: 'Open' }] };
+  assert.deepEqual(Array.from(W.groupsForLevel(c, 'Pro')), ['Pro · Solo H']);
+  assert.deepEqual(Array.from(W.groupsForLevel(c, '')), ['RX · Solo F', 'Pro · Solo H', 'Open · Solo H']);
+});

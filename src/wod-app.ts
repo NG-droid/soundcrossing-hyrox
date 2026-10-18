@@ -22,6 +22,8 @@ namespace Wod {
   let rankingTab = 'general';
   let rankingCat = '';
   let scoreGroup = 'all';
+  let scoreLevel = '';
+  let rankingLevel = '';
   let entryLevel = '';
 
   function load(): void {
@@ -63,7 +65,7 @@ namespace Wod {
     $('count-athletes').textContent = String(state.athletes.length);
     $('count-workouts').textContent = String(state.workouts.length);
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-    $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('view-actions').innerHTML = '';
+    $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
   function setTable(head: string[], rows: string[], emptyText: string): void {
@@ -138,15 +140,22 @@ namespace Wod {
     }
     return `<div class="score-inputs">${field('reps', s?.reps, 'Reps')}<span>reps</span></div>`;
   }
+  // Niveaux qui ont au moins un inscrit, dans l’ordre de l’événement.
+  function levelsUsed(): string[] { return state.levels.filter(l => state.athletes.some(a => a.level === l)); }
+  function shortGroup(g: string, level: string): string { return level ? g.slice(level.length + 3) : g; }
   function renderScores(): void {
     const w = currentWod();
     heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée).` : 'Ajoutez d’abord un WOD.');
     chips('chips', state.workouts.map(x => ({ key: x.id, label: x.name })), selectedWod, 'wod');
     if (!w) { setTable([], [], 'Ajoutez un WOD dans l’onglet 2.'); return; }
     // Une section par groupe (niveau + catégorie) : on saisit et on compare les athlètes d’un même classement.
-    const groups = usedGroups(state);
+    // Filtre par niveau (RX, Scaled, Pro, Open) quand l’événement en a plusieurs.
+    const levels = levelsUsed();
+    if (!levels.includes(scoreLevel)) scoreLevel = '';
+    if (levels.length > 1) chips('chips2', [{ key: '', label: 'Tous les niveaux' }, ...levels.map(l => ({ key: l, label: l }))], scoreLevel, 'score-level');
+    const groups = groupsForLevel(state, scoreLevel);
     if (scoreGroup !== 'all' && !groups.includes(scoreGroup)) scoreGroup = 'all';
-    if (groups.length > 1) chips('chips2', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: g }))], scoreGroup, 'score-group');
+    if (groups.length > 1) chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => ({ key: g, label: shortGroup(g, scoreLevel) }))], scoreGroup, 'score-group');
     const rows: string[] = [];
     for (const g of groups) {
       if (scoreGroup !== 'all' && g !== scoreGroup) continue;
@@ -187,11 +196,14 @@ namespace Wod {
   }
 
   function renderRanking(): void {
-    const cats = usedGroups(state);
+    const levels = levelsUsed();
+    if (!levels.includes(rankingLevel)) rankingLevel = levels.length > 1 ? levels[0]! : '';
+    if (levels.length > 1) chips('chips2', levels.map(l => ({ key: l, label: l })), rankingLevel, 'rank-level');
+    const cats = groupsForLevel(state, rankingLevel);
     if (!cats.includes(rankingCat)) rankingCat = cats[0] ?? '';
     if (rankingTab !== 'general' && !state.workouts.some(w => w.id === rankingTab)) rankingTab = 'general';
     chips('chips', [{ key: 'general', label: 'Classement général' }, ...state.workouts.map(w => ({ key: w.id, label: w.name }))], rankingTab, 'rank-tab');
-    chips('chips2', cats.map(c => ({ key: c, label: c })), rankingCat, 'rank-cat');
+    chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => ({ key: c, label: shortGroup(c, rankingLevel) })), rankingCat, 'rank-cat');
     if (!rankingCat) { heading('Classements', ''); setTable([], [], 'Ajoutez des participants et des scores.'); return; }
     const cat = rankingCat;
     if (rankingTab === 'general') {
@@ -324,12 +336,12 @@ namespace Wod {
     const target = existing ?? emptyCompetition(uid(), '', '', format);
     target.title = v('title') || 'Soundcrossing WOD'; target.date = v('date'); target.format = format;
     target.method = v('method') === 'points' ? 'points' : 'places';
-    // Changer de niveaux garde la position : RX devient Pro, Scaled devient Open ; « un seul niveau » les retire.
+    // Changer de niveaux : RX devient Pro, Scaled devient Open ; « un seul niveau » les retire.
     const levels = LEVEL_PRESETS[v('levels')] ?? [];
     if (levels.join() !== target.levels.join()) {
       for (const a of target.athletes) {
-        const i = target.levels.indexOf(a.level ?? '');
-        if (levels.length) a.level = levels[Math.max(0, i)]; else delete a.level;
+        const level = remapLevel(a.level, target.levels, levels);
+        if (level) a.level = level; else delete a.level;
       }
       target.levels = [...levels];
     }
@@ -378,6 +390,8 @@ namespace Wod {
       else if (d.rankTab) { rankingTab = d.rankTab; render(); }
       else if (d.rankCat) { rankingCat = d.rankCat; render(); }
       else if (d.scoreGroup) { scoreGroup = d.scoreGroup; render(); }
+      else if (d.scoreLevel !== undefined && t.closest('#chips2')) { scoreLevel = d.scoreLevel; scoreGroup = 'all'; render(); }
+      else if (d.rankLevel) { rankingLevel = d.rankLevel; render(); }
       else if (d.level !== undefined && t.closest('#entry-form')) { entryLevel = d.level; $('entry-error').textContent = ''; syncEntryForm(); }
     });
     $('table-body').addEventListener('change', e => { const i = e.target as HTMLInputElement; if (i.dataset.score) saveScore(i); });
