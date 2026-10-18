@@ -23,6 +23,7 @@ var Wod;
     let rankingCat = '';
     let scoreGroup = 'all';
     let scoreLevel = '';
+    let onlyTodo = false;
     let rankingLevel = '';
     let entryLevel = '';
     // Mêmes protections que l’app Hyrox : on n’écrase jamais une version plus récente d’une autre fenêtre,
@@ -304,6 +305,8 @@ var Wod;
     }
     function inputsFor(w, a) {
         const s = state.scores[w.id]?.[a.id];
+        if (s?.forfeit)
+            return `<span class="outcome-badge">Forfait</span>`;
         const field = (name, value, ph, mode = 'numeric') => `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}">`;
         if (w.type === 'time') {
             // Même case que l’heure d’arrivée de l’Hyrox : on tape hh:mm:ss.
@@ -331,7 +334,8 @@ var Wod;
     };
     function renderScores() {
         const w = currentWod();
-        heading('Saisie des scores', w ? `${w.name} — ${Wod.TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée).` : 'Ajoutez d’abord un WOD.');
+        const todo = w ? state.athletes.filter(a => Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
+        heading('Saisie des scores', w ? `${w.name} — ${Wod.TYPE_LABELS[w.type]}. Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.', w ? `<button class="format-chip${onlyTodo ? ' active' : ''}" data-action="only-todo" aria-pressed="${onlyTodo}">À saisir seulement (${todo})</button>` : '');
         chips('chips', state.workouts.map(x => ({ key: x.id, label: x.name })), selectedWod, 'wod');
         if (!w) {
             setTable([], [], 'Ajoutez un WOD dans l’onglet 2.');
@@ -353,12 +357,41 @@ var Wod;
         for (const g of groups) {
             if (scoreGroup !== 'all' && g !== scoreGroup)
                 continue;
+            const list = state.athletes.filter(x => Wod.group(x) === g && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo'));
+            if (!list.length)
+                continue;
             if (groups.length > 1)
-                rows.push(`<tr class="group-row"><td colspan="3">${esc(g)}</td></tr>`);
-            for (const a of state.athletes.filter(x => Wod.group(x) === g))
-                rows.push(`<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(Wod.group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${esc(Wod.scoreText(w, state.scores[w.id]?.[a.id]))}</td></tr>`);
+                rows.push(`<tr class="group-row"><td colspan="4">${esc(g)}</td></tr>`);
+            for (const a of list) {
+                const forfeit = !!state.scores[w.id]?.[a.id]?.forfeit;
+                rows.push(`<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(Wod.group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${savedText(w, a)}</td><td class="actions">${forfeit ? `<button class="button compact" data-reinstate="${a.id}">Annuler le forfait</button>` : `<button class="button compact" data-forfeit="${a.id}">Forfait</button>`}</td></tr>`);
+            }
         }
-        setTable(['PARTICIPANT', 'SCORE', 'ENREGISTRÉ'], rows, 'Ajoutez des participants dans l’onglet 1.');
+        setTable(['PARTICIPANT', 'SCORE', 'ENREGISTRÉ', ''], rows, onlyTodo && state.athletes.length ? 'Tous les scores de ce WOD sont saisis.' : 'Ajoutez des participants dans l’onglet 1.');
+    }
+    // Colonne « Enregistré » : le score, « À saisir » ou « Forfait ».
+    function savedText(w, a) {
+        const s = state.scores[w.id]?.[a.id], status = Wod.scoreStatus(w, s);
+        return status === 'todo' ? `<span class="muted">${Wod.STATUS_LABELS.todo}</span>` : esc(Wod.scoreText(w, s));
+    }
+    // Forfait sur ce WOD : confirmé, comme dans l’Hyrox ; le score éventuel est retiré.
+    function setForfeit(athleteId, forfeit) {
+        const w = currentWod(), a = state.athletes.find(x => x.id === athleteId);
+        if (!w || !a)
+            return;
+        const scores = state.scores[w.id] ??= {};
+        if (forfeit) {
+            const had = Wod.hasScore(w, scores[a.id]);
+            if (!confirm(`Confirmer le forfait de ${Wod.athleteLabel(a)} sur ${w.name} ?\n\n${had ? `Le score enregistré (${Wod.scoreText(w, scores[a.id])}) sera retiré. ` : ''}${state.method === 'places' ? 'Sur ce WOD : dernière place de la catégorie.' : 'Sur ce WOD : 0 point.'}`))
+                return;
+            scores[a.id] = { forfeit: true };
+        }
+        else
+            delete scores[a.id];
+        if (save()) {
+            render();
+            toast(forfeit ? 'Forfait enregistré.' : 'Forfait annulé : score à saisir.');
+        }
     }
     function saveScore(input) {
         const w = currentWod();
@@ -368,47 +401,24 @@ var Wod;
         const row = input.closest('tr');
         const get = (f) => row.querySelector(`[data-field="${f}"]`)?.value ?? '';
         try {
-            const score = {};
-            if (w.type === 'time') {
-                const t = Saisie.duration(get('time')), reps = Wod.parseNumber(get('reps'), 'Reps');
-                if (t !== null)
-                    score.timeMs = t;
-                else if (reps !== null)
-                    score.reps = Math.round(reps);
-                if (t !== null && w.capMinutes && t > w.capMinutes * 60000)
-                    throw Error(`Ce temps dépasse le time cap de ${w.capMinutes} min : saisissez plutôt les reps faites.`);
-                if (score.reps !== undefined && w.totalReps && score.reps >= w.totalReps)
-                    throw Error(`Avec ${score.reps} reps le WOD est terminé : saisissez le temps.`);
-            }
-            else if (w.type === 'load') {
-                const kg = Wod.parseNumber(get('kg'), 'Charge');
-                if (kg !== null)
-                    score.kg = kg;
-            }
-            else if (w.type === 'amrap' && w.repsPerRound) {
-                const rounds = Wod.parseNumber(get('rounds'), 'Tours'), rest = Wod.parseNumber(get('rest'), 'Reps');
-                if (rounds !== null || rest !== null)
-                    score.reps = Math.round((rounds ?? 0) * w.repsPerRound + (rest ?? 0));
-            }
-            else {
-                const reps = Wod.parseNumber(get('reps'), 'Reps');
-                if (reps !== null)
-                    score.reps = Math.round(reps);
-            }
+            // Vérifier d’abord : un score ambigu est refusé et rien n’est modifié.
+            const score = Wod.buildScore(w, { timeMs: w.type === 'time' ? Saisie.duration(get('time')) : null, reps: get('reps'), rounds: get('rounds'), rest: get('rest'), kg: get('kg') });
             row.querySelectorAll('input').forEach(i => i.classList.remove('invalid'));
             const scores = state.scores[w.id] ??= {};
-            if (Wod.hasScore(w, score))
+            if (score)
                 scores[athleteId] = score;
             else
                 delete scores[athleteId];
+            if (!save())
+                return;
             if (w.type === 'time') {
                 const f = row.querySelector('[data-field="time"]');
                 if (f)
-                    f.value = Saisie.fromMs(score.timeMs);
+                    f.value = Saisie.fromMs(score?.timeMs);
             }
-            if (!save())
-                return;
-            $(`saved-${athleteId}`).textContent = Wod.scoreText(w, scores[athleteId]);
+            const a = state.athletes.find(x => x.id === athleteId);
+            if (a)
+                $(`saved-${athleteId}`).innerHTML = savedText(w, a);
         }
         catch (error) {
             input.classList.add('invalid');
@@ -435,14 +445,22 @@ var Wod;
         }
         const cat = rankingCat;
         if (rankingTab === 'general') {
-            heading('Classement général', state.method === 'places' ? 'Addition des places sur tous les WOD : le plus petit total gagne.' : 'Table de points (1er = 100, puis −3 par place) : le plus gros total gagne.');
-            const rows = Wod.generalRanking(state, cat).map(r => `<tr><td class="rank">${r.rank}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${r.places[w.id] === null ? '<span class="muted">—</span>' : `${r.places[w.id]}<sup>e</sup>`}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
+            const pending = Wod.pendingScores(state, cat);
+            heading(pending ? 'Classement général provisoire' : 'Classement général définitif', `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${Wod.rulesText(state).slice(0, 3).join(' ')}`);
+            const cell = (w, r) => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${Wod.STATUS_LABELS[Wod.scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
+            const rows = Wod.generalRanking(state, cat).map(r => `<tr><td class="rank">${r.rank}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${state.workouts.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td></tr>`);
             setTable(['RANG', 'PARTICIPANT', ...state.workouts.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS'], rows, 'Aucun participant dans cette catégorie.');
             return;
         }
         const w = state.workouts.find(x => x.id === rankingTab);
-        heading(w.name, Wod.TYPE_LABELS[w.type]);
-        const rows = Wod.workoutRanking(state, w, cat).map(p => `<tr><td class="rank">${p.rank}</td><td><strong>${esc(Wod.athleteLabel(p.athlete))}</strong><div class="muted">${esc(p.athlete.level ? Wod.group(p.athlete) : Wod.categoryLabel(Wod.category(p.athlete)))}</div></td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+        const inCat = state.athletes.filter(a => Wod.group(a) === cat);
+        const todo = inCat.filter(a => Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length;
+        heading(w.name, `${Wod.TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
+        const label = (a) => `<strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(a.level ? Wod.group(a) : Wod.categoryLabel(Wod.category(a)))}</div>`;
+        const rows = Wod.workoutRanking(state, w, cat).map(p => `<tr><td class="rank">${p.rank}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+        for (const a of inCat)
+            if (state.scores[w.id]?.[a.id]?.forfeit)
+                rows.push(`<tr><td class="rank">—</td><td>${label(a)}</td><td><span class="outcome-badge">Forfait</span></td>${state.method === 'points' ? '<td>0 pt</td>' : ''}</tr>`);
         setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
     }
     let entryFormat = '';
@@ -596,6 +614,10 @@ var Wod;
         f.date.value = edit ? state.date : today();
         radio('format').value = edit ? state.format : '';
         radio('method').value = edit ? state.method : 'places';
+        // Règles stables : la méthode de classement ne change plus une fois les scores commencés.
+        const locked = edit && Wod.hasAnyScore(state);
+        form.querySelectorAll('input[name="method"]').forEach(i => { i.disabled = locked; });
+        $('method-lock').hidden = !locked;
         radio('levels').value = edit ? Object.keys(Wod.LEVEL_PRESETS).find(k => Wod.LEVEL_PRESETS[k].join() === state.levels.join()) ?? 'none' : 'none';
         $('event-dialog-title').textContent = edit ? 'Modifier l’événement' : 'Créer un événement';
         $('save-event-button').textContent = edit ? 'Enregistrer' : 'Créer l’événement';
@@ -621,7 +643,8 @@ var Wod;
         target.title = v('title') || 'Soundcrossing WOD';
         target.date = v('date');
         target.format = format;
-        target.method = v('method') === 'points' ? 'points' : 'places';
+        if (!(existing && Wod.hasAnyScore(existing)))
+            target.method = v('method') === 'points' ? 'points' : 'places';
         // Changer de niveaux : « un seul niveau » les retire.
         const levels = Wod.LEVEL_PRESETS[v('levels')] ?? [];
         if (levels.join() !== target.levels.join()) {
@@ -742,6 +765,14 @@ var Wod;
                 selectedWod = d.wod;
                 render();
             }
+            else if (d.action === 'only-todo') {
+                onlyTodo = !onlyTodo;
+                render();
+            }
+            else if (d.forfeit)
+                setForfeit(d.forfeit, true);
+            else if (d.reinstate)
+                setForfeit(d.reinstate, false);
             else if (d.rankTab) {
                 rankingTab = d.rankTab;
                 render();

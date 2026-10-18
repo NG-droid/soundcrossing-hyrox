@@ -2,6 +2,7 @@
 // Module WOD : logique pure, sans accès à la page. Indépendant de l’app Hyrox.
 var Wod;
 (function (Wod) {
+    Wod.STATUS_LABELS = { todo: 'À saisir', done: 'Terminé', capped: 'Arrêté au cap', forfeit: 'Forfait' };
     Wod.TYPE_LABELS = {
         time: 'For Time (le plus vite)',
         amrap: 'AMRAP (max de tours / reps)',
@@ -53,6 +54,16 @@ var Wod;
         return seconds * 1000;
     }
     Wod.parseTime = parseTime;
+    // Tours et répétitions : nombre entier uniquement. Une faute de frappe est refusée, jamais arrondie.
+    function parseInteger(text, what) {
+        const t = text.trim();
+        if (!t)
+            return null;
+        if (!/^\d+$/.test(t))
+            throw Error(`${what} : nombre entier attendu, pas « ${text} ».`);
+        return Number(t);
+    }
+    Wod.parseInteger = parseInteger;
     function parseNumber(text, what) {
         const t = text.trim().replace(',', '.');
         if (!t)
@@ -64,7 +75,7 @@ var Wod;
     }
     Wod.parseNumber = parseNumber;
     function hasScore(w, s) {
-        if (!s)
+        if (!s || s.forfeit)
             return false;
         if (w.type === 'time')
             return s.timeMs !== undefined || s.reps !== undefined;
@@ -75,7 +86,49 @@ var Wod;
     Wod.hasScore = hasScore;
     function capped(w, s) { return w.type === 'time' && s.timeMs === undefined && s.reps !== undefined; }
     Wod.capped = capped;
+    function scoreStatus(w, s) {
+        if (s?.forfeit)
+            return 'forfeit';
+        if (!hasScore(w, s))
+            return 'todo';
+        return capped(w, s) ? 'capped' : 'done';
+    }
+    Wod.scoreStatus = scoreStatus;
+    function buildScore(w, input) {
+        if (w.type === 'time') {
+            const t = input.timeMs, reps = parseInteger(input.reps ?? '', 'Reps');
+            if (t !== null && reps !== null)
+                throw Error('Saisissez soit le temps (terminé), soit les reps faites au cap, pas les deux.');
+            if (t !== null) {
+                if (w.capMinutes && t > w.capMinutes * 60000)
+                    throw Error(`Ce temps dépasse le time cap de ${w.capMinutes} min : saisissez plutôt les reps faites.`);
+                return { timeMs: t };
+            }
+            if (reps === null)
+                return null;
+            if (w.totalReps && reps >= w.totalReps)
+                throw Error(`Avec ${reps} reps le WOD est terminé : saisissez le temps.`);
+            return { reps };
+        }
+        if (w.type === 'load') {
+            const kg = parseNumber(input.kg ?? '', 'Charge');
+            return kg === null ? null : { kg };
+        }
+        if (w.type === 'amrap' && w.repsPerRound) {
+            const rounds = parseInteger(input.rounds ?? '', 'Tours'), rest = parseInteger(input.rest ?? '', 'Reps');
+            if (rounds === null && rest === null)
+                return null;
+            if (rest !== null && rest >= w.repsPerRound)
+                throw Error(`Reps en plus : moins de ${w.repsPerRound} (sinon c'est un tour de plus).`);
+            return { reps: (rounds ?? 0) * w.repsPerRound + (rest ?? 0) };
+        }
+        const reps = parseInteger(input.reps ?? '', 'Reps');
+        return reps === null ? null : { reps };
+    }
+    Wod.buildScore = buildScore;
     function scoreText(w, s) {
+        if (s?.forfeit)
+            return 'Forfait';
         if (!hasScore(w, s))
             return '';
         if (w.type === 'time')
@@ -114,8 +167,8 @@ var Wod;
     Wod.workoutRanking = workoutRanking;
     function pointsFor(place) { return Math.max(0, 100 - (place - 1) * 3); }
     Wod.pointsFor = pointsFor;
-    // Classement général d’une catégorie. Sans score sur un WOD, l’athlète prend la dernière place
-    // de la catégorie (méthode places) ou 0 point (méthode points).
+    // Classement général d’une catégorie. Sans score (à saisir ou forfait) sur un WOD, l’athlète prend la dernière place
+    // de la catégorie (méthode places) ou 0 point (méthode points). Tant qu’un score est à saisir, le classement est provisoire.
     function generalRanking(c, key) {
         const athletes = c.athletes.filter(a => group(a) === key);
         const byWod = c.workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, key).map(p => [p.athlete.id, p.rank])) }));
@@ -135,6 +188,24 @@ var Wod;
         return rows;
     }
     Wod.generalRanking = generalRanking;
+    // Scores encore à saisir (ni score ni forfait), pour tout l’événement ou un groupe.
+    function pendingScores(c, key) {
+        const athletes = key ? c.athletes.filter(a => group(a) === key) : c.athletes;
+        return c.workouts.reduce((n, w) => n + athletes.filter(a => scoreStatus(w, c.scores[w.id]?.[a.id]) === 'todo').length, 0);
+    }
+    Wod.pendingScores = pendingScores;
+    function hasAnyScore(c) { return Object.values(c.scores).some(list => Object.keys(list).length > 0); }
+    Wod.hasAnyScore = hasAnyScore;
+    // Règles affichées avant et pendant la compétition, et dans l’export.
+    function rulesText(c) {
+        return [
+            c.method === 'places' ? 'Addition des places sur tous les WOD : le plus petit total gagne.' : 'Table de points : 1er = 100, puis −3 par place (minimum 0). Le plus gros total gagne.',
+            'Ex æquo : même score = même place ; même total = même rang.',
+            c.method === 'places' ? 'Forfait ou score manquant sur un WOD : dernière place de la catégorie.' : 'Forfait ou score manquant sur un WOD : 0 point.',
+            'For Time : arrêté au cap = classé après tous ceux qui ont terminé, au nombre de reps.',
+        ];
+    }
+    Wod.rulesText = rulesText;
     // Groupes présents, dans l’ordre des niveaux puis H, F, HH, FF, HF.
     function usedGroups(c) {
         const levelIndex = (a) => { const i = c.levels.indexOf(a.level ?? ''); return i < 0 ? c.levels.length : i; };
@@ -318,8 +389,12 @@ var Wod;
                 continue;
             if (typeof x !== 'number' || !Number.isFinite(x) || x < 0)
                 throw Error('Score invalide.');
+            if (key === 'reps' && !Number.isInteger(x))
+                throw Error('Score invalide : reps non entières.');
             score[key] = x;
         }
+        if (s.forfeit === true)
+            return { forfeit: true };
         return score;
     }
     function validate(value) {
@@ -377,16 +452,21 @@ var Wod;
         const general = [['Catégorie', 'Rang', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
         for (const key of usedGroups(c))
             for (const row of generalRanking(c, key))
-                general.push([key, row.rank, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? '—'), row.total]);
+                general.push([key, row.rank, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? Wod.STATUS_LABELS[scoreStatus(w, c.scores[w.id]?.[row.athlete.id])]), row.total]);
         sheets.push({ name: 'Général', rows: general });
         c.workouts.forEach((w, i) => {
             const rows = [['Catégorie', 'Rang', 'Participant', 'Score']];
             for (const key of usedGroups(c))
                 for (const p of workoutRanking(c, w, key))
                     rows.push([key, p.rank, athleteLabel(p.athlete), scoreText(w, p.score)]);
+            for (const a of c.athletes)
+                if (c.scores[w.id]?.[a.id]?.forfeit)
+                    rows.push([group(a), '—', athleteLabel(a), 'Forfait']);
             const safe = w.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 25).trim() || 'WOD';
             sheets.push({ name: `${i + 1}. ${safe}`, rows });
         });
+        const pending = pendingScores(c);
+        sheets.push({ name: 'Règles', rows: [['Règles du classement'], ...rulesText(c).map(r => [r]), [], [pending ? `Classement provisoire : ${pending} score(s) à saisir.` : 'Classement définitif : tous les scores sont saisis.']] });
         return sheets;
     }
     Wod.exportRows = exportRows;

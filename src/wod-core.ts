@@ -13,7 +13,10 @@ namespace Wod {
     capMinutes: number | null; totalReps: number | null; repsPerRound: number | null;
   }
   // time : temps en ms si terminé, sinon reps faites avant le time cap. amrap/reps : reps. load : kg.
-  export interface Score { timeMs?: number; reps?: number; kg?: number; }
+  // forfeit : forfait déclaré sur ce WOD (aucune performance). Pas de score du tout : à saisir.
+  export interface Score { timeMs?: number; reps?: number; kg?: number; forfeit?: true; }
+  export type ScoreStatus = 'todo' | 'done' | 'capped' | 'forfeit';
+  export const STATUS_LABELS: Record<ScoreStatus, string> = { todo: 'À saisir', done: 'Terminé', capped: 'Arrêté au cap', forfeit: 'Forfait' };
   export type EventFormat = 'SOLO' | 'DUO' | 'MIXED';
   export interface Competition {
     id: string; title: string; date: string; format: EventFormat; method: Method;
@@ -68,6 +71,13 @@ namespace Wod {
     const seconds = parts.reduce((total, n) => total * 60 + n, 0);
     return seconds * 1000;
   }
+  // Tours et répétitions : nombre entier uniquement. Une faute de frappe est refusée, jamais arrondie.
+  export function parseInteger(text: string, what: string): number | null {
+    const t = text.trim();
+    if (!t) return null;
+    if (!/^\d+$/.test(t)) throw Error(`${what} : nombre entier attendu, pas « ${text} ».`);
+    return Number(t);
+  }
   export function parseNumber(text: string, what: string): number | null {
     const t = text.trim().replace(',', '.');
     if (!t) return null;
@@ -77,14 +87,45 @@ namespace Wod {
   }
 
   export function hasScore(w: Workout, s: Score | undefined): s is Score {
-    if (!s) return false;
+    if (!s || s.forfeit) return false;
     if (w.type === 'time') return s.timeMs !== undefined || s.reps !== undefined;
     if (w.type === 'load') return s.kg !== undefined;
     return s.reps !== undefined;
   }
   export function capped(w: Workout, s: Score): boolean { return w.type === 'time' && s.timeMs === undefined && s.reps !== undefined; }
 
+  export function scoreStatus(w: Workout, s: Score | undefined): ScoreStatus {
+    if (s?.forfeit) return 'forfeit';
+    if (!hasScore(w, s)) return 'todo';
+    return capped(w, s) ? 'capped' : 'done';
+  }
+  // Champs tapés dans la saisie (timeMs déjà lu par la case hh:mm:ss). Renvoie null si tout est vide.
+  // Un score ambigu est refusé : rien n'est deviné ni arrondi.
+  export interface ScoreInput { timeMs: number | null; reps?: string; rounds?: string; rest?: string; kg?: string; }
+  export function buildScore(w: Workout, input: ScoreInput): Score | null {
+    if (w.type === 'time') {
+      const t = input.timeMs, reps = parseInteger(input.reps ?? '', 'Reps');
+      if (t !== null && reps !== null) throw Error('Saisissez soit le temps (terminé), soit les reps faites au cap, pas les deux.');
+      if (t !== null) {
+        if (w.capMinutes && t > w.capMinutes * 60000) throw Error(`Ce temps dépasse le time cap de ${w.capMinutes} min : saisissez plutôt les reps faites.`);
+        return { timeMs: t };
+      }
+      if (reps === null) return null;
+      if (w.totalReps && reps >= w.totalReps) throw Error(`Avec ${reps} reps le WOD est terminé : saisissez le temps.`);
+      return { reps };
+    }
+    if (w.type === 'load') { const kg = parseNumber(input.kg ?? '', 'Charge'); return kg === null ? null : { kg }; }
+    if (w.type === 'amrap' && w.repsPerRound) {
+      const rounds = parseInteger(input.rounds ?? '', 'Tours'), rest = parseInteger(input.rest ?? '', 'Reps');
+      if (rounds === null && rest === null) return null;
+      if (rest !== null && rest >= w.repsPerRound) throw Error(`Reps en plus : moins de ${w.repsPerRound} (sinon c'est un tour de plus).`);
+      return { reps: (rounds ?? 0) * w.repsPerRound + (rest ?? 0) };
+    }
+    const reps = parseInteger(input.reps ?? '', 'Reps'); return reps === null ? null : { reps };
+  }
+
   export function scoreText(w: Workout, s: Score | undefined): string {
+    if (s?.forfeit) return 'Forfait';
     if (!hasScore(w, s)) return '';
     if (w.type === 'time') return s.timeMs !== undefined ? clock(s.timeMs) : `CAP + ${s.reps} reps`;
     if (w.type === 'load') return `${String(s.kg).replace('.', ',')} kg`;
@@ -118,8 +159,8 @@ namespace Wod {
 
   export function pointsFor(place: number): number { return Math.max(0, 100 - (place - 1) * 3); }
 
-  // Classement général d’une catégorie. Sans score sur un WOD, l’athlète prend la dernière place
-  // de la catégorie (méthode places) ou 0 point (méthode points).
+  // Classement général d’une catégorie. Sans score (à saisir ou forfait) sur un WOD, l’athlète prend la dernière place
+  // de la catégorie (méthode places) ou 0 point (méthode points). Tant qu’un score est à saisir, le classement est provisoire.
   export function generalRanking(c: Competition, key: string): GeneralRow[] {
     const athletes = c.athletes.filter(a => group(a) === key);
     const byWod = c.workouts.map(w => ({ w, places: new Map(workoutRanking(c, w, key).map(p => [p.athlete.id, p.rank])) }));
@@ -137,6 +178,22 @@ namespace Wod {
     rows.sort((x, y) => better(x, y) || athleteLabel(x.athlete).localeCompare(athleteLabel(y.athlete)));
     rows.forEach((row, i) => { const prev = rows[i - 1]; row.rank = prev && prev.total === row.total ? prev.rank : i + 1; });
     return rows;
+  }
+
+  // Scores encore à saisir (ni score ni forfait), pour tout l’événement ou un groupe.
+  export function pendingScores(c: Competition, key?: string): number {
+    const athletes = key ? c.athletes.filter(a => group(a) === key) : c.athletes;
+    return c.workouts.reduce((n, w) => n + athletes.filter(a => scoreStatus(w, c.scores[w.id]?.[a.id]) === 'todo').length, 0);
+  }
+  export function hasAnyScore(c: Competition): boolean { return Object.values(c.scores).some(list => Object.keys(list).length > 0); }
+  // Règles affichées avant et pendant la compétition, et dans l’export.
+  export function rulesText(c: Competition): string[] {
+    return [
+      c.method === 'places' ? 'Addition des places sur tous les WOD : le plus petit total gagne.' : 'Table de points : 1er = 100, puis −3 par place (minimum 0). Le plus gros total gagne.',
+      'Ex æquo : même score = même place ; même total = même rang.',
+      c.method === 'places' ? 'Forfait ou score manquant sur un WOD : dernière place de la catégorie.' : 'Forfait ou score manquant sur un WOD : 0 point.',
+      'For Time : arrêté au cap = classé après tous ceux qui ont terminé, au nombre de reps.',
+    ];
   }
 
   // Groupes présents, dans l’ordre des niveaux puis H, F, HH, FF, HF.
@@ -269,8 +326,10 @@ namespace Wod {
       const x = s[key];
       if (x === undefined) continue;
       if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) throw Error('Score invalide.');
+      if (key === 'reps' && !Number.isInteger(x)) throw Error('Score invalide : reps non entières.');
       score[key] = x;
     }
+    if (s.forfeit === true) return { forfeit: true };
     return score;
   }
 
@@ -321,15 +380,18 @@ namespace Wod {
     const sheets: { name: string; rows: (string | number | null)[][] }[] = [];
     const general: (string | number | null)[][] = [['Catégorie', 'Rang', 'Participant', ...c.workouts.map(w => w.name), c.method === 'places' ? 'Total places' : 'Total points']];
     for (const key of usedGroups(c)) for (const row of generalRanking(c, key))
-      general.push([key, row.rank, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? '—'), row.total]);
+      general.push([key, row.rank, athleteLabel(row.athlete), ...c.workouts.map(w => row.places[w.id] ?? STATUS_LABELS[scoreStatus(w, c.scores[w.id]?.[row.athlete.id])]), row.total]);
     sheets.push({ name: 'Général', rows: general });
     c.workouts.forEach((w, i) => {
       const rows: (string | number | null)[][] = [['Catégorie', 'Rang', 'Participant', 'Score']];
       for (const key of usedGroups(c)) for (const p of workoutRanking(c, w, key))
         rows.push([key, p.rank, athleteLabel(p.athlete), scoreText(w, p.score)]);
+      for (const a of c.athletes) if (c.scores[w.id]?.[a.id]?.forfeit) rows.push([group(a), '—', athleteLabel(a), 'Forfait']);
       const safe = w.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 25).trim() || 'WOD';
       sheets.push({ name: `${i + 1}. ${safe}`, rows });
     });
+    const pending = pendingScores(c);
+    sheets.push({ name: 'Règles', rows: [['Règles du classement'], ...rulesText(c).map(r => [r]), [], [pending ? `Classement provisoire : ${pending} score(s) à saisir.` : 'Classement définitif : tous les scores sont saisis.']] });
     return sheets;
   }
 
