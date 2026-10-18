@@ -1,0 +1,21 @@
+/* Module WOD : compléments aux styles de l’app. */
+.wod-table{min-width:760px}
+.wod-table td{vertical-align:middle}
+.wod-table .rank{font-weight:800;font-size:18px}
+.wod-table .muted{color:#77817a;font-size:12px}
+.wod-table .actions{text-align:right;white-space:nowrap}
+.wod-table .actions .button{margin-left:6px}
+.score-inputs{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.score-inputs input{width:92px;padding:9px 10px;border:1px solid #9fa3a9;border-radius:6px;background:#fff;font-variant-numeric:tabular-nums}
+.score-inputs input.invalid{border-color:#d8242d;background:#fff0f0}
+.score-inputs span{color:#555;font-size:12px}
+.score-saved{font-weight:700;font-variant-numeric:tabular-nums}
+.modal textarea{width:100%;font:inherit;padding:10px;border:1px solid #ddd;border-radius:6px;background:#f3f3ef;margin-top:6px}
+.wod-desc{color:#555;font-size:12px;max-width:420px}
+.score-inputs{flex-wrap:nowrap}
+.score-inputs input{width:80px}
+.score-inputs span{white-space:nowrap}
+.wod-table td:first-child{width:90px}
+.wod-type-choice{display:grid;grid-template-columns:1fr 1fr}
+.event-format-choice>label>span small{line-height:1.4}
+.group-row td{text-align:left!important;background:#efefeb;font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding-top:10px!important;padding-bottom:10px!important}

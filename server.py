@@ -8,6 +8,7 @@ from urllib.parse import urlparse, unquote
 import hashlib
 import io
 import os
+import shutil
 import subprocess
 import zipfile
 import json
@@ -19,6 +20,19 @@ ROOT = Path(__file__).resolve().parent
 PORT = 8767
 URL = f"http://127.0.0.1:{PORT}"
 IDENTITY = hashlib.sha256(str(ROOT).encode()).hexdigest()
+MAX_DATA = 20 * 1024 * 1024
+
+
+def data_dir() -> Path:
+    """Dossier des données, hors du dossier de l’application : une mise à jour ou un nouveau ZIP ne l’efface pas."""
+    custom = os.environ.get("SOUNDCROSSING_DATA")
+    if custom:
+        return Path(custom)
+    documents = Path.home() / "Documents"
+    return (documents if documents.is_dir() else Path.home()) / "Soundcrossing"
+
+
+DATA_FILE = data_dir() / "session.json"
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -35,10 +49,57 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if path not in {"/", "/index.html", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"}:
+        if path == "/data":
+            try:
+                body = DATA_FILE.read_bytes()
+            except FileNotFoundError:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path not in {"/", "/index.html", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/assets/soundcrossing-logo.png", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js",
+                        "/wod.html", "/wod.css", "/dist/wod-core.js", "/dist/wod-app.js"}:
             self.send_error(404)
             return
         super().do_GET()
+
+    def do_PUT(self):
+        """Copie sur le disque de la session enregistrée par le navigateur."""
+        if unquote(urlparse(self.path).path) != "/data":
+            self.send_error(404)
+            return
+        # Seule la page de Soundcrossing peut écrire, pas un autre site ouvert dans le navigateur.
+        if self.headers.get("Host") != f"127.0.0.1:{PORT}" or self.headers.get("Origin") not in (None, URL) \
+                or self.headers.get("Content-Type") != "application/json":
+            self.send_error(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= MAX_DATA:
+                raise ValueError
+            body = self.rfile.read(length)
+            store = json.loads(body)
+            if not isinstance(store, dict) or "session" not in store:
+                raise ValueError
+        except ValueError:
+            self.send_error(400)
+            return
+        try:
+            DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+            pending = DATA_FILE.with_name("session.json.tmp")
+            pending.write_bytes(body)
+            if DATA_FILE.exists():  # garde la version précédente en secours
+                shutil.copyfile(DATA_FILE, DATA_FILE.with_name("session-precedente.json"))
+            pending.replace(DATA_FILE)
+        except OSError:
+            self.send_error(500)
+            return
+        self.send_response(204)
+        self.end_headers()
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -53,8 +114,9 @@ VERSION_FILE = ROOT / "VERSION"
 # Windows relit un .bat en cours d’exécution, et Python ne change pas d’une version à l’autre.
 UPDATABLE = (
     "index.html", "styles.css", "club.css", "server.py",
-    "assets/soundcrossing-logo.jpg", "assets/ORIGINE.md",
+    "assets/soundcrossing-logo.jpg", "assets/soundcrossing-logo.png", "assets/ORIGINE.md",
     "dist/models.js", "dist/core.js", "dist/app.js",
+    "wod.html", "wod.css", "dist/wod-core.js", "dist/wod-app.js",
     "vendor/xlsx.full.min.js", "vendor/SheetJS-LICENSE.txt", "LISEZ-MOI.txt",
 )
 
@@ -74,7 +136,9 @@ def update():
         request = Request(f"{RELEASE}/VERSION.txt?t={fresh}", headers={"Cache-Control": "no-cache"})
         with urlopen(request, timeout=5) as response:
             remote = response.read(100).decode().strip()
-        if not remote or remote == local:
+        # Un fichier ajouté par une version récente peut manquer si l’ancienne mise à jour ne le connaissait pas.
+        missing = any(not (ROOT / name).exists() for name in UPDATABLE)
+        if not remote or (remote == local and not missing):
             print("Soundcrossing est déjà à jour.", flush=True)
             return
         print("Nouvelle version disponible, mise à jour…", flush=True)
@@ -113,7 +177,7 @@ def main():
         except (URLError, ValueError, OSError):
             print(f"Le port {PORT} est occupé. Fermez l’autre application puis relancez Soundcrossing.")
             sys.exit(1)
-    print(f"Soundcrossing — {URL}\nGardez cette fenêtre ouverte pendant la session. Ctrl+C pour arrêter.", flush=True)
+    print(f"Soundcrossing — {URL}\nDonnées enregistrées dans : {DATA_FILE.parent}\nGardez cette fenêtre ouverte pendant la session. Ctrl+C pour arrêter.", flush=True)
     if "--no-open" not in sys.argv:
         webbrowser.open(URL)
     try:

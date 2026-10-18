@@ -86,6 +86,61 @@ var PaceApp;
         }
         catch { /* Le choix de vue ne bloque pas les données. */ }
     }
+    // Copie de la session sur le disque via server.py : elle survit à un navigateur qui efface ses données à la fermeture.
+    let diskPending = null, diskBusy = false, diskWarned = false;
+    function saveToDisk(raw) {
+        if (typeof fetch !== 'function' || location.protocol === 'file:')
+            return;
+        diskPending = raw;
+        if (diskBusy)
+            return;
+        diskBusy = true;
+        void (async () => {
+            while (diskPending !== null) {
+                const body = diskPending;
+                diskPending = null;
+                try {
+                    const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+                    if (!response.ok)
+                        throw Error();
+                    diskWarned = false;
+                }
+                catch {
+                    if (!diskWarned) {
+                        diskWarned = true;
+                        toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et exportez une sauvegarde.', true);
+                    }
+                }
+            }
+            diskBusy = false;
+        })();
+    }
+    async function syncDisk() {
+        if (typeof fetch !== 'function' || location.protocol === 'file:')
+            return;
+        let disk = null;
+        try {
+            const response = await fetch('/data', { cache: 'no-store' });
+            if (response.ok)
+                disk = validateStore(await response.json());
+        }
+        catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
+        if (disk && (loadedRaw === null || storageBlocked || disk.savedAt > state.savedAt)) {
+            const encoded = JSON.stringify(disk);
+            try {
+                localStorage.setItem(KEY, encoded);
+                loadedRaw = encoded;
+                storageBlocked = false;
+            }
+            catch { /* La session reste utilisable à l’écran. */ }
+            state = disk;
+            render();
+            savedStatus(storageBlocked);
+            toast('Données rechargées depuis la copie sur le disque.');
+        }
+        else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt))
+            saveToDisk(loadedRaw);
+    }
     function persist(candidate, allowRecovery = false, expectedRaw = loadedRaw) {
         try {
             if (storageBlocked && !allowRecovery)
@@ -130,6 +185,7 @@ var PaceApp;
             loadedRaw = encoded;
             storageBlocked = false;
             savedStatus();
+            saveToDisk(encoded);
             return true;
         }
         catch (error) {
@@ -188,7 +244,8 @@ var PaceApp;
     }
     function raceLabel(race) { return new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR'); }
     function eventFormatLabel(race) { return race.format === 'MIXED' ? 'Solo + Duo' : race.format === 'DUO' ? 'Duo' : 'Solo'; }
-    function departureText(entry) { return entry.startedAt === null ? entry.scheduled || '—' : Pace.timeOfDay(entry.startedAt); }
+    // Départ affiché en hh:mm ; les secondes ne servent qu’au résultat.
+    function departureText(entry) { return entry.startedAt === null ? entry.scheduled.slice(0, 5) || '—' : Pace.timeOfDay(entry.startedAt).slice(0, 5); }
     function resultRanking() {
         const visible = Pace.eventRankingFormats(currentRace(), raceEntries());
         return formatOptions.filter(option => visible.includes(option.key)).filter(option => activeFormat === 'all' || option.key === activeFormat).flatMap(option => Pace.rankingFor(state.session, option.key, currentRace()?.date ?? state.session.date));
@@ -403,11 +460,11 @@ var PaceApp;
         $('entry-format-choice').hidden = race.format !== 'MIXED';
         $('entry-course').textContent = `${race.title} · ${raceLabel(race)} · Événement ${eventFormatLabel(race)}`;
         $('delete-entry').hidden = !entry;
-        for (const name of ['name1', 'name2', 'scheduled'])
+        for (const name of ['name1', 'name2'])
             if (entry)
                 field(form, name).value = entry[name];
-        if (entry?.startedAt !== null && entry?.startedAt !== undefined)
-            field(form, 'scheduled').value = Pace.timeOfDay(entry.startedAt);
+        if (entry)
+            field(form, 'scheduled').value = (entry.startedAt === null ? entry.scheduled : Pace.timeOfDay(entry.startedAt)).slice(0, 5);
         const lastKind = lastEntryFormats.get(race.id) ?? '';
         const lastFormat = lastKind.startsWith('DUO_') ? 'DUO' : lastKind.startsWith('SOLO_') ? 'SOLO' : '';
         const format = entry?.format ?? (race.format === 'MIXED' ? lastFormat : race.format);
@@ -432,7 +489,7 @@ var PaceApp;
             if (!scheduled)
                 throw Error('Renseignez l’heure de départ.');
             let startedAt = old?.startedAt ?? null;
-            if (startedAt !== null && scheduled !== Pace.timeOfDay(startedAt) && `${scheduled}:00` !== Pace.timeOfDay(startedAt))
+            if (startedAt !== null && scheduled.slice(0, 5) !== Pace.timeOfDay(startedAt).slice(0, 5))
                 startedAt = Pace.plannedAt(race, { ...old, scheduled });
             // Un temps total saisi reste fixe : l’arrivée suit le départ. Une heure d’arrivée saisie reste fixe : le temps est recalculé.
             const keepDuration = old?.resultMode === 'duration';
@@ -1138,5 +1195,6 @@ var PaceApp;
     document.addEventListener('visibilitychange', tick);
     load();
     render();
+    void syncDisk();
     window.setInterval(tick, 1000);
 })(PaceApp || (PaceApp = {}));
