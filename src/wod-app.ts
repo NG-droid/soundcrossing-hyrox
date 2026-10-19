@@ -727,7 +727,7 @@ namespace Wod {
       const i = e.target as HTMLInputElement;
       if (e.key !== 'Enter' || !i.dataset.score) return;
       e.preventDefault(); saveScore(i);
-      const all = [...document.querySelectorAll<HTMLInputElement>('#table-body input[data-field]')].filter(x => x.dataset.field === i.dataset.field);
+      const all = [...document.querySelectorAll<HTMLInputElement>('#table-body input[data-field]')].filter(x => x.dataset.field === i.dataset.field && (x === i || !x.disabled));
       all[all.indexOf(i) + 1]?.focus();
     });
     $('entry-form').addEventListener('submit', submitAthlete);

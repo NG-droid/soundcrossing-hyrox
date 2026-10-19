@@ -1091,7 +1091,7 @@ var Wod;
                 return;
             e.preventDefault();
             saveScore(i);
-            const all = [...document.querySelectorAll('#table-body input[data-field]')].filter(x => x.dataset.field === i.dataset.field);
+            const all = [...document.querySelectorAll('#table-body input[data-field]')].filter(x => x.dataset.field === i.dataset.field && (x === i || !x.disabled));
             all[all.indexOf(i) + 1]?.focus();
         });
         $('entry-form').addEventListener('submit', submitAthlete);
