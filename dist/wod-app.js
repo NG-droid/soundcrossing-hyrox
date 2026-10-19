@@ -377,7 +377,7 @@ var Wod;
         const w = currentWod();
         const todo = w ? Wod.competitors(state, w).filter(a => Wod.scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
         const how = w?.type === 'time' ? ` Saisissez le temps affiché par le chrono (${shortTime(w) ? 'mm:ss' : 'hh:mm:ss'}), pas une heure.${w.capMinutes ? ` Time cap : ${capText(w)}.` : ''}` : '';
-        heading('Saisie des scores', w ? `${w.name} — ${Wod.TYPE_LABELS[w.type]}.${how} Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.', w ? `<button class="format-chip${onlyTodo ? ' active' : ''}" data-action="only-todo" aria-pressed="${onlyTodo}">À saisir seulement (${todo})</button>` : '');
+        heading('Saisie des scores', w ? `${w.name} — ${Wod.TYPE_LABELS[w.type]}.${how} Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.', w ? `<button class="format-chip${onlyTodo ? ' active' : ''}" data-action="only-todo" aria-pressed="${onlyTodo}">À saisir seulement (${todo})</button><button class="button" data-action="print-blank" title="Deux feuilles vierges de ce WOD à remplir à la main">${PRINTER}Feuille vierge</button><button class="button" data-action="print-sheets" title="Une feuille par participant affiché (suivant les filtres)">${PRINTER}Feuilles jury</button>` : '');
         if (state.workouts.length)
             wodPicker(state.workouts.map(wodTab), selectedWod, 'wod');
         if (!w) {
@@ -397,12 +397,7 @@ var Wod;
         if (groups.length > 1)
             chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => groupChip(g, scoreLevel))], scoreGroup, 'score-group');
         const rows = [];
-        for (const g of groups) {
-            if (scoreGroup !== 'all' && g !== scoreGroup)
-                continue;
-            const list = Wod.competitors(state, w).filter(x => Wod.group(x) === g && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo'));
-            if (!list.length)
-                continue;
+        for (const { g, list } of scoreSections(w)) {
             if (groups.length > 1)
                 rows.push(`<tr class="group-row"><td colspan="4">${esc(g)}</td></tr>`);
             for (const a of list) {
@@ -413,6 +408,63 @@ var Wod;
         const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
         const none = w.phase === 'final' && !Wod.competitors(state, w).length ? 'Aucun qualifié pour la Finale : qualifiez-les dans l’onglet 4. Classements.' : 'Ajoutez des participants dans l’onglet 1.';
         setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', ''], rows, onlyTodo && Wod.competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
+    }
+    // Participants affichés dans Scores (filtres niveau, groupe, « à saisir »), groupe par groupe.
+    function scoreSections(w) {
+        return Wod.groupsForLevel(state, scoreLevel).filter(g => scoreGroup === 'all' || g === scoreGroup)
+            .map(g => ({ g, list: Wod.competitors(state, w).filter(x => Wod.group(x) === g && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo')) }))
+            .filter(s => s.list.length);
+    }
+    // Feuilles de jury à imprimer, sur le modèle des scorecards CrossFit : une par participant, ou vierge.
+    const PRINTER = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>';
+    // Ligne à remplir : libellé, trait, unité.
+    const line = (label, unit = '', short = false) => `<div class="sheet-field${short ? ' short' : ''}"><span>${label}</span><i></i>${unit ? `<em>${unit}</em>` : ''}</div>`;
+    function sheetScore(w) {
+        if (w.type === 'time') {
+            const short = shortTime(w);
+            const clock = `<div class="sheet-field"><span>Temps réalisé</span><b class="sheet-clock">${short ? '<i></i>:<i></i>' : '<i></i>:<i></i>:<i></i>'}</b><em>${short ? 'mm:ss' : 'hh:mm:ss'}</em></div>`;
+            return `${clock}<p class="sheet-or">ou, si arrêté au cap${w.capMinutes ? ` de ${capText(w)}` : ''} :</p>${line('Reps faites', w.totalReps ? `sur ${w.totalReps}` : 'reps')}<p class="sheet-hint">Remplir une seule des deux cases : le temps si l’athlète a fini, sinon les reps.</p>`;
+        }
+        if (w.type === 'load')
+            return line('Charge retenue', 'kg');
+        if (w.type === 'amrap' && w.repsPerRound)
+            return `<div class="sheet-row">${line('Tours complets', 'tours')}${line('+ Reps', 'reps')}</div>`;
+        return line('Total', 'reps');
+    }
+    // Comptage pour le juge : cases à cocher par tour (avec les reps cumulées) ou lignes libres.
+    function sheetTally(w) {
+        if (w.type === 'amrap' && w.repsPerRound)
+            return `<div class="sheet-tally">${Array.from({ length: 20 }, (_, i) => `<span><b>${i + 1}</b><small>${(i + 1) * (w.repsPerRound ?? 0)}</small></span>`).join('')}</div><p class="sheet-hint">Cochez chaque tour terminé (petit chiffre : reps cumulées).</p>`;
+        if (w.type === 'load')
+            return `<div class="sheet-tally attempts">${[1, 2, 3].map(i => `<span><b>Essai ${i}</b><small>kg</small><small>☐ OK ☐ No rep</small></span>`).join('')}</div>`;
+        return '<div class="sheet-lines"><span>Comptage / notes</span><i></i></div>';
+    }
+    function sheet(w, a) {
+        const box = (label) => `<span class="sheet-check">☐ ${esc(label)}</span>`;
+        const cats = state.format === 'SOLO' ? ['Solo H', 'Solo F'] : state.format === 'DUO' ? ['Duo HH', 'Duo FF', 'Duo HF'] : ['Solo H', 'Solo F', 'Duo HH', 'Duo FF', 'Duo HF'];
+        const who = a ? `<div class="sheet-name">${esc(Wod.athleteLabel(a))}</div><div class="sheet-tags">${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</div>`
+            : `${line(state.format === 'SOLO' ? 'Participant' : 'Participant / duo')}<div class="sheet-tags">${state.levels.length ? `${state.levels.map(box).join('')}<span class="sheet-sep"></span>` : ''}${cats.map(box).join('')}</div>`;
+        const info = [Wod.TYPE_LABELS[w.type], w.capMinutes ? `${w.type === 'time' ? 'time cap ' : ''}${capText(w)}` : '', w.phase === 'final' ? 'Finale' : ''].filter(Boolean).join(' · ');
+        return `<article class="jury-sheet">
+      <header><img src="assets/soundcrossing-logo.png" alt=""><div><strong>${esc(state.title)}</strong><span>${esc(dateLabel(state.date))}</span></div><b>FEUILLE DE JURY</b></header>
+      <section class="sheet-wod"><div><strong>${esc(w.name)}</strong><span>${esc(info)}</span></div>${w.description ? `<p>${esc(w.description)}</p>` : ''}</section>
+      <section class="sheet-who">${who}<div class="sheet-row">${line('Juge')}${line('Couloir', '', true)}</div></section>
+      <section class="sheet-score"><h3>Score</h3>${sheetScore(w)}${sheetTally(w)}<span class="sheet-check">☐ Forfait</span></section>
+      <footer><div class="sheet-sign">Signature du juge</div><div class="sheet-sign">Signature de l’athlète</div><span class="sheet-check">☐ Saisi dans l’app</span></footer>
+    </article>`;
+    }
+    function printSheets(blank) {
+        const w = currentWod();
+        if (!w)
+            return;
+        const list = blank ? [] : scoreSections(w).flatMap(s => s.list);
+        if (!blank && !list.length) {
+            toast('Aucun participant à imprimer avec ces filtres.');
+            return;
+        }
+        $('jury-print').innerHTML = blank ? sheet(w) + sheet(w) : list.map(a => sheet(w, a)).join('');
+        // Attendre le logo, sinon il manque sur les feuilles imprimées.
+        void Promise.all([...$('jury-print').querySelectorAll('img')].map(i => i.decode().catch(() => undefined))).then(() => window.print());
     }
     // Colonne « Enregistré » : le score, « À saisir » ou « Forfait ».
     function savedText(w, a) {
@@ -953,6 +1005,10 @@ var Wod;
             }
             else if (d.action === 'podium')
                 openPodium();
+            else if (d.action === 'print-sheets')
+                printSheets(false);
+            else if (d.action === 'print-blank')
+                printSheets(true);
             else if (d.action === 'only-todo') {
                 onlyTodo = !onlyTodo;
                 render();
