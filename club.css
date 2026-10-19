@@ -270,7 +270,7 @@
 @keyframes save-blink{50%{opacity:.25}}
 @media(max-width:700px){.save-badge{font-size:11px;padding:5px 9px}}
 /* Écrans standard (Windows, écran externe) : les traits de 1 px et les ombres fines, nets sur un écran Retina, s'effacent. On les renforce pour garder le même rendu que sur le Mac. */
-@media(max-resolution:1.99dppx){.race-table td{border-bottom-color:#b9bdc3}.race-table th{border-top-color:#8f939a;border-bottom-color:#8f939a}
+@media(max-resolution:1.99dppx){.race-table td{border-bottom-color:#b9bdc3}.race-table th{background:#cfd2d7;border-top-color:#8f939a;border-bottom-color:#8f939a}
 .button,.row-action{border-color:#959aa1;border-bottom-color:#7b8088;box-shadow:0 2px 3px #1e28334d,inset 0 1px 0 #fff}
 .button:active,.row-action:active{box-shadow:inset 0 1px 3px #1e283255}
 .button.primary{border-color:#a3141c;box-shadow:0 2px 5px #b0171f73,inset 0 1px 0 #ff8a90}
