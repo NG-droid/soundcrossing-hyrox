@@ -252,6 +252,8 @@ namespace PaceApp {
     $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${option.key === 'all' ? '' : `chip-fmt-${option.key}`} ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
     $('format-chips').hidden = !race;
     $('rank-heading').hidden = view !== 'results';
+    // Le tableau connaît son onglet : largeurs et alignements des colonnes en dépendent (club.css).
+    document.querySelector<HTMLElement>('.race-table')!.dataset.view = view;
     $('arrival-heading').hidden = $('total-heading').hidden = view === 'participants';
     $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
     $('show-podium-button').hidden = view === 'participants' || view === 'live';

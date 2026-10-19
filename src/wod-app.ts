@@ -167,6 +167,7 @@ namespace Wod {
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
     (document.querySelector('.wod-table') as HTMLElement).classList.toggle('wod-ranking', view === 'ranking');
+    (document.querySelector('.wod-table') as HTMLElement).dataset.view = view;
     $('podium-footer').hidden = true;
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
@@ -208,7 +209,7 @@ namespace Wod {
     if (finalists) $('chips').innerHTML = `<button class="format-chip${onlyFinalists ? ' active' : ''}" data-action="only-finalists" aria-pressed="${onlyFinalists}">Finalistes seulement (${finalists})</button>`;
     const rows = state.athletes.filter(a => !onlyFinalists || isFinalist(state, a)).map(a =>
       `<tr><td><strong>${esc(athleteLabel(a))}</strong>${isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
-    setTable(['PARTICIPANT / DUO', 'CATÉGORIE', ''], rows, 'Aucun participant pour l’instant.');
+    setTable(['PARTICIPANT / DUO', 'CATÉGORIE', 'ACTIONS'], rows, 'Aucun participant pour l’instant.');
   }
 
   function workoutDetails(w: Workout): string {
@@ -222,7 +223,7 @@ namespace Wod {
     heading('WOD', 'Ajoutez chaque épreuve et choisissez comment elle se classe. Une épreuve de Finale est réservée aux qualifiés.', '<button class="button primary" data-action="add-workout">+ Ajouter un WOD</button>');
     const rows = state.workouts.map((w, i) =>
       `<tr><td class="rank">${i + 1}</td><td><strong>${esc(w.name)}</strong>${w.phase === 'final' ? ' <span class="finalist-badge">Finale</span>' : ''}<div class="wod-desc">${esc(w.description)}</div></td><td>${esc(TYPE_LABELS[w.type])}<div class="muted">${esc(workoutDetails(w))}</div></td><td class="actions"><button class="button compact" data-edit-workout="${w.id}">Modifier</button><button class="button compact danger" data-delete-workout="${w.id}">Supprimer</button></td></tr>`);
-    setTable(['N°', 'WOD', 'CLASSEMENT', ''], rows, 'Aucun WOD pour l’instant.');
+    setTable(['N°', 'WOD', 'CLASSEMENT', 'ACTIONS'], rows, 'Aucun WOD pour l’instant.');
   }
 
   function currentWod(): Workout | undefined {
@@ -291,7 +292,7 @@ namespace Wod {
     }
     const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
     const none = w.phase === 'final' && !competitors(state, w).length ? 'Aucun qualifié pour la Finale : qualifiez-les dans l’onglet 4. Classements.' : 'Ajoutez des participants dans l’onglet 1.';
-    setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', ''], rows, onlyTodo && competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
+    setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', 'ACTIONS'], rows, onlyTodo && competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
   }
   // Participants affichés dans Scores (filtres niveau, groupe, « à saisir »), groupe par groupe.
   function scoreSections(w: Workout): { g: string; list: Athlete[] }[] {
