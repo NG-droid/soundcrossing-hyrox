@@ -53,7 +53,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = unquote(urlparse(self.path).path)
         if path == "/health":
-            body = json.dumps({"app": "pace-hyrox", "identity": IDENTITY}).encode()
+            body = json.dumps({"app": "pace-hyrox", "identity": IDENTITY, "data": str(DATA_FILE.parent)}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))

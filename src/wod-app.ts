@@ -89,7 +89,7 @@ namespace Wod {
   const revisionOf = (raw: unknown): string => { const r = (raw as { revision?: unknown } | null)?.revision; return typeof r === 'string' ? r : ''; };
   function saveToDisk(raw: string): void {
     if (typeof fetch !== 'function' || location.protocol === 'file:') return;
-    diskPending = raw;
+    diskPending = raw; Temoin.etat('attente');
     if (diskBusy) return;
     diskBusy = true;
     void (async () => {
@@ -97,10 +97,12 @@ namespace Wod {
         const body = diskPending; diskPending = null;
         try {
           const response = await fetch('/data/wod', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Base-Revision': diskRevision ?? '' }, body });
-          if (response.status === 409) { toast('La copie WOD sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.'); continue; }
+          if (response.status === 409) { Temoin.etat('conflit'); toast('La copie WOD sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.'); continue; }
           if (!response.ok) throw Error();
           diskRevision = revisionOf(JSON.parse(body)); diskWarned = false;
+          if (diskPending === null) Temoin.etat('ok', (JSON.parse(body) as Store).savedAt);
         } catch {
+          Temoin.etat('erreur');
           if (!diskWarned) { diskWarned = true; toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et faites une sauvegarde fichier.'); }
         }
       }
@@ -109,9 +111,9 @@ namespace Wod {
   }
   async function syncDisk(): Promise<void> {
     if (typeof fetch !== 'function' || location.protocol === 'file:') return;
-    let disk: Store | null = null;
+    let disk: Store | null = null, reached = false;
     try {
-      const response = await fetch('/data/wod', { cache: 'no-store' });
+      const response = await fetch('/data/wod', { cache: 'no-store' }); reached = true;
       if (response.status === 404) diskRevision = '';
       if (response.ok) { const raw: unknown = await response.json(); diskRevision = revisionOf(raw); disk = validateStore(raw); }
     } catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
@@ -123,7 +125,9 @@ namespace Wod {
         localStorage.setItem(KEY, encoded); loadedRaw = encoded; storageBlocked = false; } catch { /* Données utilisables à l’écran. */ }
       adopt(encoded); render(); savedStatus(storageBlocked);
       toast('Données WOD rechargées depuis la copie sur le disque.');
-    } else if (loadedRaw !== null && !storageBlocked && (!disk || (disk.savedAt ?? 0) < (store.savedAt ?? 0))) saveToDisk(loadedRaw);
+    } else if (loadedRaw !== null && !storageBlocked && (!disk || (disk.savedAt ?? 0) < (store.savedAt ?? 0))) { saveToDisk(loadedRaw); return; }
+    if (reached && !diskBusy) Temoin.etat('ok', disk?.savedAt);
+    else if (!reached) Temoin.etat('erreur');
   }
   // Comme dans l’Hyrox : chaque formulaire retient la version de ce qu’il modifie à l’ouverture.
   // Si une autre fenêtre l’a changé entre-temps, l’enregistrement est refusé au lieu d’écraser la correction récente.
@@ -137,10 +141,7 @@ namespace Wod {
   function openDraft(form: HTMLFormElement, kind: 'athlete' | 'workout' | 'event', id: string): void { drafts.set(form, draftVersion(kind, id)); }
   function draftChanged(form: HTMLFormElement, kind: 'athlete' | 'workout' | 'event', id: string): boolean { return drafts.get(form) !== draftVersion(kind, id); }
   const STALE_FORM = 'Les données de ce formulaire ont changé dans une autre fenêtre. Fermez-le puis rouvrez-le pour utiliser la version à jour.';
-  function savedStatus(error = false): void {
-    const element = $('save-status'); element.classList.toggle('error', error);
-    element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
-  }
+  function savedStatus(error = false): void { Temoin.navigateur(!error); }
   let toastTimer = 0;
   function toast(text: string): void {
     const el = $('toast'); el.textContent = text; el.hidden = false;
@@ -772,7 +773,7 @@ namespace Wod {
   function exportBackup(): void { download(`sauvegarde-wod-${today()}.json`, JSON.stringify({ ...store, selectedId: state.id }, null, 2), 'application/json'); }
 
   document.addEventListener('DOMContentLoaded', () => {
-    load(); bind(); render(); savedStatus(storageBlocked); void syncDisk();
+    load(); bind(); render(); savedStatus(storageBlocked); void syncDisk(); Temoin.surveiller(() => { void syncDisk(); });
     // Une autre fenêtre a enregistré : on affiche sa version au lieu de l’écraser plus tard.
     window.addEventListener('storage', event => {
       if (event.key !== KEY && event.key !== null) return;

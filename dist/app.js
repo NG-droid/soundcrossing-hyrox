@@ -46,12 +46,7 @@ var PaceApp;
         window.clearTimeout(toastTimer);
         toastTimer = window.setTimeout(() => { element.hidden = true; }, error ? 10000 : 4500);
     }
-    function savedStatus(error = false) {
-        const element = $('save-status');
-        element.classList.toggle('error', error);
-        element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
-        element.title = error ? 'Exportez une sauvegarde. Aucune modification non sauvegardée n’est appliquée.' : state.savedAt ? `Dernière sauvegarde à ${new Date(state.savedAt).toLocaleTimeString('fr-FR')}` : 'Les modifications sont automatiquement enregistrées.';
-    }
+    function savedStatus(error = false) { Temoin.navigateur(!error); }
     function load() {
         try {
             loadedRaw = localStorage.getItem(KEY);
@@ -99,6 +94,7 @@ var PaceApp;
         if (typeof fetch !== 'function' || location.protocol === 'file:')
             return;
         diskPending = raw;
+        Temoin.etat('attente');
         if (diskBusy)
             return;
         diskBusy = true;
@@ -109,6 +105,7 @@ var PaceApp;
                 try {
                     const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Base-Revision': diskRevision ?? '' }, body });
                     if (response.status === 409) {
+                        Temoin.etat('conflit');
                         toast('La copie sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.', true);
                         continue;
                     }
@@ -116,8 +113,11 @@ var PaceApp;
                         throw Error();
                     diskRevision = revisionOf(JSON.parse(body));
                     diskWarned = false;
+                    if (diskPending === null)
+                        Temoin.etat('ok', JSON.parse(body).savedAt);
                 }
                 catch {
+                    Temoin.etat('erreur');
                     if (!diskWarned) {
                         diskWarned = true;
                         toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et exportez une sauvegarde.', true);
@@ -130,9 +130,10 @@ var PaceApp;
     async function syncDisk() {
         if (typeof fetch !== 'function' || location.protocol === 'file:')
             return;
-        let disk = null;
+        let disk = null, reached = false;
         try {
             const response = await fetch('/data', { cache: 'no-store' });
+            reached = true;
             if (response.status === 404)
                 diskRevision = '';
             if (response.ok) {
@@ -155,8 +156,14 @@ var PaceApp;
             savedStatus(storageBlocked);
             toast('Données rechargées depuis la copie sur le disque.');
         }
-        else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt))
+        else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt)) {
             saveToDisk(loadedRaw);
+            return;
+        }
+        if (reached && !diskBusy)
+            Temoin.etat('ok', disk?.savedAt);
+        else if (!reached)
+            Temoin.etat('erreur');
     }
     function persist(candidate, allowRecovery = false, expectedRaw = loadedRaw) {
         try {
@@ -1430,5 +1437,6 @@ var PaceApp;
     load();
     render();
     void syncDisk();
+    Temoin.surveiller(() => { void syncDisk(); });
     window.setInterval(tick, 1000);
 })(PaceApp || (PaceApp = {}));

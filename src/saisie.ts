@@ -60,3 +60,46 @@ namespace Saisie {
     });
   }
 }
+
+// Témoin de sauvegarde, partagé par l’Hyrox et le WOD : la pastille de l’en-tête dit si la copie
+// sur l’ordinateur (dossier Documents/Soundcrossing, écrit par server.py) est à jour.
+namespace Temoin {
+  export type Disque = 'attente' | 'ok' | 'erreur' | 'conflit' | 'navigateur';
+  let disque: Disque = 'attente', local = true, depuis = 0, dossier = '', lenteur = 0;
+  const heure = (ms: number): string => new Date(ms).toLocaleTimeString('fr-FR');
+  function afficher(): void {
+    const el = document.getElementById('save-status');
+    if (!el) return;
+    const ou = dossier || 'Documents/Soundcrossing';
+    const [css, texte, titre] = !local ? ['erreur', 'Enregistrement indisponible', 'Le navigateur refuse d’enregistrer. Exportez une sauvegarde : aucune modification non sauvegardée n’est appliquée.']
+      : disque === 'ok' ? ['ok', 'Enregistré sur l’ordinateur', depuis ? `Dernière copie à ${heure(depuis)} dans ${ou}` : `Copie à jour dans ${ou}`]
+      : disque === 'attente' ? ['attente', 'Enregistrement…', `Copie en cours dans ${ou}`]
+      : disque === 'navigateur' ? ['attente', 'Navigateur seulement', 'Page ouverte sans le lanceur Soundcrossing : rien n’est copié sur l’ordinateur. Exportez une sauvegarde.']
+      : disque === 'conflit' ? ['erreur', 'Non enregistré sur l’ordinateur', 'La copie sur l’ordinateur a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.']
+      : ['erreur', 'Non enregistré sur l’ordinateur', 'Le lanceur Soundcrossing ne répond plus. Rouvrez-le : la copie reprendra toute seule. En attendant, les données restent dans ce navigateur.'];
+    el.className = `save-badge ${css}`; el.title = titre;
+    el.innerHTML = `<i></i>${texte}`;
+  }
+  // false : le navigateur lui-même n’enregistre plus (stockage bloqué ou illisible).
+  export function navigateur(ok: boolean): void { local = ok; afficher(); }
+  // L’état « attente » n’apparaît que si la copie traîne : une écriture rapide ne fait pas clignoter la pastille.
+  export function etat(valeur: Disque, savedAt = 0): void {
+    window.clearTimeout(lenteur);
+    if (valeur === 'attente') { lenteur = window.setTimeout(() => { disque = 'attente'; afficher(); }, 600); return; }
+    disque = valeur; if (valeur === 'ok' && savedAt) depuis = savedAt; afficher();
+  }
+  // Vérifie toutes les 10 s que le lanceur répond ; quand il revient, relancer() recopie les données.
+  export function surveiller(relancer: () => void): void {
+    if (typeof fetch !== 'function' || location.protocol === 'file:') { etat('navigateur'); return; }
+    const ping = async (): Promise<void> => {
+      try {
+        const response = await fetch('/health', { cache: 'no-store' });
+        if (!response.ok) throw Error();
+        const info = await response.json() as { data?: unknown };
+        if (typeof info.data === 'string' && info.data !== dossier) { dossier = info.data; afficher(); }
+        if (disque === 'erreur') relancer();
+      } catch { etat('erreur'); }
+    };
+    void ping(); window.setInterval(() => { void ping(); }, 10000);
+  }
+}
