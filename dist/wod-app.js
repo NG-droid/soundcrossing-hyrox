@@ -129,6 +129,7 @@ var Wod;
         if (typeof fetch !== 'function' || location.protocol === 'file:')
             return;
         diskPending = raw;
+        Temoin.etat('attente');
         if (diskBusy)
             return;
         diskBusy = true;
@@ -139,6 +140,7 @@ var Wod;
                 try {
                     const response = await fetch('/data/wod', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Base-Revision': diskRevision ?? '' }, body });
                     if (response.status === 409) {
+                        Temoin.etat('conflit');
                         toast('La copie WOD sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.');
                         continue;
                     }
@@ -146,8 +148,11 @@ var Wod;
                         throw Error();
                     diskRevision = revisionOf(JSON.parse(body));
                     diskWarned = false;
+                    if (diskPending === null)
+                        Temoin.etat('ok', JSON.parse(body).savedAt);
                 }
                 catch {
+                    Temoin.etat('erreur');
                     if (!diskWarned) {
                         diskWarned = true;
                         toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et faites une sauvegarde fichier.');
@@ -160,9 +165,10 @@ var Wod;
     async function syncDisk() {
         if (typeof fetch !== 'function' || location.protocol === 'file:')
             return;
-        let disk = null;
+        let disk = null, reached = false;
         try {
             const response = await fetch('/data/wod', { cache: 'no-store' });
+            reached = true;
             if (response.status === 404)
                 diskRevision = '';
             if (response.ok) {
@@ -190,8 +196,14 @@ var Wod;
             savedStatus(storageBlocked);
             toast('Données WOD rechargées depuis la copie sur le disque.');
         }
-        else if (loadedRaw !== null && !storageBlocked && (!disk || (disk.savedAt ?? 0) < (store.savedAt ?? 0)))
+        else if (loadedRaw !== null && !storageBlocked && (!disk || (disk.savedAt ?? 0) < (store.savedAt ?? 0))) {
             saveToDisk(loadedRaw);
+            return;
+        }
+        if (reached && !diskBusy)
+            Temoin.etat('ok', disk?.savedAt);
+        else if (!reached)
+            Temoin.etat('erreur');
     }
     // Comme dans l’Hyrox : chaque formulaire retient la version de ce qu’il modifie à l’ouverture.
     // Si une autre fenêtre l’a changé entre-temps, l’enregistrement est refusé au lieu d’écraser la correction récente.
@@ -206,11 +218,7 @@ var Wod;
     function openDraft(form, kind, id) { drafts.set(form, draftVersion(kind, id)); }
     function draftChanged(form, kind, id) { return drafts.get(form) !== draftVersion(kind, id); }
     const STALE_FORM = 'Les données de ce formulaire ont changé dans une autre fenêtre. Fermez-le puis rouvrez-le pour utiliser la version à jour.';
-    function savedStatus(error = false) {
-        const element = $('save-status');
-        element.classList.toggle('error', error);
-        element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
-    }
+    function savedStatus(error = false) { Temoin.navigateur(!error); }
     let toastTimer = 0;
     function toast(text) {
         const el = $('toast');
@@ -1170,6 +1178,7 @@ var Wod;
         render();
         savedStatus(storageBlocked);
         void syncDisk();
+        Temoin.surveiller(() => { void syncDisk(); });
         // Une autre fenêtre a enregistré : on affiche sa version au lieu de l’écraser plus tard.
         window.addEventListener('storage', event => {
             if (event.key !== KEY && event.key !== null)

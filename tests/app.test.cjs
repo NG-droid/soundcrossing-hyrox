@@ -16,6 +16,7 @@ function appHarness() {
     localStorage:{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)},
     document:{getElementById:element},window:{clearTimeout(){},setTimeout(){return 1;},addEventListener(name,handler){listeners.set(name,handler);}}});
   vm.runInContext(fs.readFileSync('dist/core.js','utf8'),context);
+  vm.runInContext(fs.readFileSync('dist/saisie.js','utf8'),context);
   const source=fs.readFileSync('dist/app.js','utf8');
   const boundary=source.indexOf("    document.addEventListener('click', handleAction);");
   assert.ok(boundary>0,'Application bootstrap boundary must be present');

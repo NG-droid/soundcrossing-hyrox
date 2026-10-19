@@ -260,3 +260,12 @@
 .wod-table[data-view=ranking] th:last-child{width:auto}
 /* Boutons du titre : toujours sur une seule ligne ; c’est le texte de description qui passe à la ligne. */
 @media(min-width:701px){.list-heading>div:first-child{flex:1 1 auto;min-width:0}.list-heading-actions{flex:0 0 auto;flex-wrap:nowrap}}
+
+/* Témoin de sauvegarde (Hyrox et WOD) : pastille en relief, vert = copie sur l’ordinateur à jour. */
+.save-badge{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;cursor:default;box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 1px 2px rgba(0,0,0,.12)}
+.save-badge i{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:inset 0 -1px 1px rgba(0,0,0,.25)}
+.save-badge.ok{color:#22603d;background:linear-gradient(#f3faf5,#e0f0e6);border-color:#a9d3b8}.save-badge.ok i{background:#2f8a57}
+.save-badge.attente{color:#7a5211;background:linear-gradient(#fffaf0,#f8ebcf);border-color:#e3c98f}.save-badge.attente i{background:#d69a2d}
+.save-badge.erreur{color:#fff;background:linear-gradient(#e63a42,#d8242d);border-color:#a8151d;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 1px 3px rgba(0,0,0,.25)}.save-badge.erreur i{background:#fff;animation:save-blink 1.2s ease-in-out infinite}
+@keyframes save-blink{50%{opacity:.25}}
+@media(max-width:700px){.save-badge{font-size:11px;padding:5px 9px}}

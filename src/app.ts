@@ -39,11 +39,7 @@ namespace PaceApp {
     const element = $('toast'); element.textContent = message; element.classList.toggle('error', error); element.hidden = false;
     window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => { element.hidden = true; }, error ? 10000 : 4500);
   }
-  function savedStatus(error = false): void {
-    const element = $('save-status'); element.classList.toggle('error', error);
-    element.innerHTML = `<i></i>${error ? 'Enregistrement indisponible' : 'Modifications enregistrées'}`;
-    element.title = error ? 'Exportez une sauvegarde. Aucune modification non sauvegardée n’est appliquée.' : state.savedAt ? `Dernière sauvegarde à ${new Date(state.savedAt).toLocaleTimeString('fr-FR')}` : 'Les modifications sont automatiquement enregistrées.';
-  }
+  function savedStatus(error = false): void { Temoin.navigateur(!error); }
   function load(): void {
     try {
       loadedRaw = localStorage.getItem(KEY);
@@ -72,7 +68,7 @@ namespace PaceApp {
   const revisionOf = (raw: unknown): string => { const r = (raw as { revision?: unknown } | null)?.revision; return typeof r === 'string' ? r : ''; };
   function saveToDisk(raw: string): void {
     if (typeof fetch !== 'function' || location.protocol === 'file:') return;
-    diskPending = raw;
+    diskPending = raw; Temoin.etat('attente');
     if (diskBusy) return;
     diskBusy = true;
     void (async () => {
@@ -80,10 +76,12 @@ namespace PaceApp {
         const body = diskPending; diskPending = null;
         try {
           const response = await fetch('/data', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Base-Revision': diskRevision ?? '' }, body });
-          if (response.status === 409) { toast('La copie sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.', true); continue; }
+          if (response.status === 409) { Temoin.etat('conflit'); toast('La copie sur le disque a été modifiée par un autre navigateur : rien n’a été écrasé. Rechargez la page.', true); continue; }
           if (!response.ok) throw Error();
           diskRevision = revisionOf(JSON.parse(body)); diskWarned = false;
+          if (diskPending === null) Temoin.etat('ok', (JSON.parse(body) as Pace.Store).savedAt);
         } catch {
+          Temoin.etat('erreur');
           if (!diskWarned) { diskWarned = true; toast('Copie sur le disque impossible. Gardez la fenêtre Soundcrossing ouverte et exportez une sauvegarde.', true); }
         }
       }
@@ -92,9 +90,9 @@ namespace PaceApp {
   }
   async function syncDisk(): Promise<void> {
     if (typeof fetch !== 'function' || location.protocol === 'file:') return;
-    let disk: Pace.Store | null = null;
+    let disk: Pace.Store | null = null, reached = false;
     try {
-      const response = await fetch('/data', { cache: 'no-store' });
+      const response = await fetch('/data', { cache: 'no-store' }); reached = true;
       if (response.status === 404) diskRevision = '';
       if (response.ok) { const raw: unknown = await response.json(); diskRevision = revisionOf(raw); disk = validateStore(raw); }
     } catch { /* Pas de copie lisible : celle du navigateur reste la référence. */ }
@@ -103,7 +101,9 @@ namespace PaceApp {
       try { localStorage.setItem(KEY, encoded); loadedRaw = encoded; storageBlocked = false; } catch { /* La session reste utilisable à l’écran. */ }
       state = disk; render(); savedStatus(storageBlocked);
       toast('Données rechargées depuis la copie sur le disque.');
-    } else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt)) saveToDisk(loadedRaw);
+    } else if (loadedRaw !== null && !storageBlocked && (!disk || disk.savedAt < state.savedAt)) { saveToDisk(loadedRaw); return; }
+    if (reached && !diskBusy) Temoin.etat('ok', disk?.savedAt);
+    else if (!reached) Temoin.etat('erreur');
   }
   function persist(candidate: Pace.Store, allowRecovery = false, expectedRaw = loadedRaw): boolean {
     try {
@@ -928,5 +928,5 @@ namespace PaceApp {
     catch { storageBlocked = true; savedStatus(true); toast('La sauvegarde externe est illisible. Exportez la session actuelle.', true); }
   });
   window.addEventListener('pageshow', tick); document.addEventListener('visibilitychange', tick);
-  load(); render(); void syncDisk(); window.setInterval(tick, 1000);
+  load(); render(); void syncDisk(); Temoin.surveiller(() => { void syncDisk(); }); window.setInterval(tick, 1000);
 }
