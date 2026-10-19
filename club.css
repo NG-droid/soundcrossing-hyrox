@@ -258,3 +258,5 @@
 .race-table[data-view] .score-name span{padding:0}.race-table[data-view] .score-name .duo-join{padding:0 5px}
 .race-table[data-view] .score-inputs input{margin:0}
 .wod-table[data-view=ranking] th:last-child{width:auto}
+/* Boutons du titre : toujours sur une seule ligne ; c’est le texte de description qui passe à la ligne. */
+@media(min-width:701px){.list-heading>div:first-child{flex:1 1 auto;min-width:0}.list-heading-actions{flex:0 0 auto;flex-wrap:nowrap}}
