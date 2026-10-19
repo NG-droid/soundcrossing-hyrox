@@ -305,11 +305,12 @@ var PaceApp;
         const out = e.status === 'abandoned' || e.status === 'withdrawn';
         // Même case d’heure que l’heure de départ de l’inscription, avec les secondes.
         // Un temps enregistré est verrouillé : le crayon le rend modifiable.
-        const locked = e.status === 'finished' && unlockedId !== e.id;
+        // Un forfait n’a pas d’heure à saisir : « Remettre en course » d’abord, sinon une heure tapée par erreur l’annulerait.
+        const locked = e.status === 'finished' && unlockedId !== e.id || out;
         const arrival = `<div class="arrival-entry"><input class="score-time" type="time" step="1" data-arrival="${esc(e.id)}" value="${e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt)}" aria-label="Heure d’arrivée de ${esc(label(e))}"${locked ? ' disabled' : ''}></div>`;
         const actions = [
             e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : '',
-            locked ? actionButton('unlock', e.id, PEN, 'icon', `Modifier le temps de ${label(e)}`) : '',
+            locked && !out ? actionButton('unlock', e.id, PEN, 'icon', `Modifier le temps de ${label(e)}`) : '',
             out ? actionButton('reinstate', e.id, 'Remettre en course') : actionButton('withdraw', e.id, 'Forfait'),
             e.status === 'finished' ? actionButton('clear', e.id, TRASH, 'icon', `Effacer le résultat de ${label(e)}`) : ''
         ].join('');
@@ -1116,7 +1117,7 @@ var PaceApp;
     }
     function saveArrival(input, nextId = '') {
         const id = input.dataset.arrival ?? '', entry = entryById(id);
-        if (!entry)
+        if (!entry || entry.status === 'withdrawn' || entry.status === 'abandoned')
             return;
         try {
             const time = Saisie.clockTime(input.value), current = entry.arrivedAt === null ? '' : Pace.timeOfDay(entry.arrivedAt);
@@ -1222,8 +1223,9 @@ var PaceApp;
         if (event.key !== 'Enter' || !input.dataset.arrival)
             return;
         event.preventDefault();
+        // Case suivante encore à remplir : on saute les temps verrouillés et les forfaits.
         const boxes = [...document.querySelectorAll('#entries-body [data-arrival]')];
-        saveArrival(input, boxes[boxes.indexOf(input) + 1]?.dataset.arrival ?? input.dataset.arrival);
+        saveArrival(input, boxes.slice(boxes.indexOf(input) + 1).find(box => !box.disabled)?.dataset.arrival ?? input.dataset.arrival);
     });
     // Un bouton cliqué juste après avoir tapé une heure est redessiné avec la ligne : on rejoue son clic.
     let pressed = null;

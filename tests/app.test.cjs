@@ -27,7 +27,7 @@ function appHarness() {
       state: () => state,
       freeze(form,snapshot) {editSnapshots.set(form,snapshot);},
       genders() {selectedEntryFormat='SOLO'; selectedGender1='H'; selectedGender2='';},
-      persist, saveResult, saveEntry
+      persist, saveResult, saveEntry, scoreCells
     };
     ${storageHandler}
   })(PaceApp || (PaceApp = {}));`,context);
@@ -115,4 +115,13 @@ test('changing the departure recalculates the time of an entered arrival',()=>{
   h.api.saveEntry({preventDefault(){}});
   const entry=JSON.parse(h.values.get(KEY)).session.entries[0];
   assert.equal(entry.durationMs,3000000);assert.equal(h.P.timeOfDay(entry.arrivedAt),'10:00:00');
+});
+test('a withdrawn entry has no arrival box to type in on the Scores tab',()=>{
+  const h=appHarness();
+  const withdrawn={...h.entry,status:'withdrawn'};
+  const html=h.api.scoreCells(withdrawn);
+  assert.match(html,/data-arrival="a"[^>]* disabled/);
+  assert.match(html,/data-action="reinstate"/);
+  assert.doesNotMatch(html,/data-action="unlock"/);
+  assert.doesNotMatch(h.api.scoreCells(h.entry),/data-arrival="a"[^>]* disabled/);
 });
