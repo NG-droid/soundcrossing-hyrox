@@ -256,9 +256,16 @@ var Wod;
         document.querySelector('.wod-table').classList.toggle('wod-ranking', view === 'ranking');
         document.querySelector('.wod-table').dataset.view = view;
         $('podium-footer').hidden = true;
+        $('search-bar').hidden = view === 'workouts';
         ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
     }
+    // Recherche par nom, comme dans l’Hyrox : filtre Participants, Scores et Classements (les rangs ne changent pas).
+    const searchText = () => $('search').value;
+    const found = (a) => Wod.matchesSearch(a, searchText());
+    const NO_MATCH = 'Aucun participant ne correspond à la recherche.';
     function setTable(head, rows, emptyText) {
+        if (!rows.length && searchText().trim() && view !== 'workouts')
+            emptyText = NO_MATCH;
         $('table-head').innerHTML = `<tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>`;
         $('table-body').innerHTML = rows.join('');
         $('empty').hidden = rows.length > 0;
@@ -314,7 +321,7 @@ var Wod;
             onlyFinalists = false;
         if (finalists)
             $('chips').innerHTML = `<button class="format-chip${onlyFinalists ? ' active' : ''}" data-action="only-finalists" aria-pressed="${onlyFinalists}">Finalistes seulement (${finalists})</button>`;
-        const rows = state.athletes.filter(a => !onlyFinalists || Wod.isFinalist(state, a)).map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong>${Wod.isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+        const rows = state.athletes.filter(a => (!onlyFinalists || Wod.isFinalist(state, a)) && found(a)).map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong>${Wod.isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
         setTable(['PARTICIPANT / DUO', 'CATÉGORIE', 'ACTIONS'], rows, 'Aucun participant pour l’instant.');
     }
     function workoutDetails(w) {
@@ -413,7 +420,7 @@ var Wod;
     // Participants affichés dans Scores (filtres niveau, groupe, « à saisir »), groupe par groupe.
     function scoreSections(w) {
         return Wod.groupsForLevel(state, scoreLevel).filter(g => scoreGroup === 'all' || g === scoreGroup)
-            .map(g => ({ g, list: Wod.competitors(state, w).filter(x => Wod.group(x) === g && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo')) }))
+            .map(g => ({ g, list: Wod.competitors(state, w).filter(x => Wod.group(x) === g && found(x) && (!onlyTodo || Wod.scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo')) }))
             .filter(s => s.list.length);
     }
     // Feuilles de jury à imprimer, sur le modèle des scorecards CrossFit : une par participant, ou vierge.
@@ -608,7 +615,7 @@ var Wod;
             const cell = (w, r) => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${Wod.STATUS_LABELS[Wod.scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
             podiumFooter(ranking.length, pending);
             const pick = (a) => `<td>${Wod.isFinalist(state, a) ? `<button class="button compact finalist-on" data-unqualify="${a.id}" title="Retirer de la Finale">✓ Qualifié</button>` : `<button class="button compact" data-qualify-one="${a.id}">Qualifier</button>`}</td>`;
-            const rows = ranking.map(r => `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${wods.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td>${phase === 'qualif' && final ? pick(r.athlete) : ''}</tr>`);
+            const rows = ranking.filter(r => found(r.athlete)).map(r => `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${wods.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td>${phase === 'qualif' && final ? pick(r.athlete) : ''}</tr>`);
             setTable(['RANG', 'PARTICIPANT', ...wods.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS', ...(phase === 'qualif' && final ? ['FINALE'] : [])], rows, phase === 'final' ? 'Aucun qualifié dans cette catégorie.' : 'Aucun participant dans cette catégorie.');
             return;
         }
@@ -618,9 +625,9 @@ var Wod;
         heading(w.name, `${Wod.TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
         const label = (a) => `<strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(a.level ? Wod.group(a) : Wod.categoryLabel(Wod.category(a)))}</div>`;
         podiumFooter(Wod.workoutRanking(state, w, cat).length, todo);
-        const rows = Wod.workoutRanking(state, w, cat).map(p => `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+        const rows = Wod.workoutRanking(state, w, cat).filter(p => found(p.athlete)).map(p => `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
         for (const a of inCat)
-            if (state.scores[w.id]?.[a.id]?.forfeit)
+            if (state.scores[w.id]?.[a.id]?.forfeit && found(a))
                 rows.push(`<tr><td class="rank">—</td><td>${label(a)}</td><td><span class="outcome-badge">Forfait</span></td>${state.method === 'points' ? '<td>0 pt</td>' : ''}</tr>`);
         setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
     }
@@ -1100,7 +1107,8 @@ var Wod;
             toggleEventList();
             return;
         } const pick = target.closest('[data-event-id]'); toggleEventList(false); if (!pick || pick.dataset.eventId === store.selectedId)
-            return; selectEvent(pick.dataset.eventId || ''); rememberEvent(); render(); });
+            return; selectEvent(pick.dataset.eventId || ''); $('search').value = ''; rememberEvent(); render(); });
+        $('search').addEventListener('input', render);
         $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
         $('export-button').addEventListener('click', exportExcel);
         $('backup-button').addEventListener('click', exportBackup);

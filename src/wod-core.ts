@@ -65,6 +65,11 @@ namespace Wod {
   // Groupe de classement : niveau + catégorie, par ex. « RX · Solo H ».
   export function group(a: Athlete): string { return `${a.level ? `${a.level} · ` : ''}${categoryLabel(category(a))}`; }
   export function athleteLabel(a: Athlete): string { return a.format === 'DUO' ? `${a.name1} & ${a.name2}` : a.name1; }
+  // Recherche par nom, comme dans l’Hyrox : sans accents ni majuscules, sur le nom affiché (les deux noms d’un duo).
+  export function matchesSearch(a: Athlete, query: string): boolean {
+    const q = String(query ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    return !q || athleteLabel(a).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(q);
+  }
 
   export function clock(ms: number): string {
     const s = Math.round(ms / 1000);

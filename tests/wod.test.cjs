@@ -220,3 +220,13 @@ test('finale: only finalists, points reset, ties broken by last final WOD then q
   assert.equal(back.workouts[1].phase, 'final');
   assert.deepEqual(Array.from(W.exportRows(c), s => s.name).slice(0, 2), ['Qualifs', 'Finale']);
 });
+
+test('search by name ignores accents and case, and finds either partner of a duo', () => {
+  const solo = { ...athlete('a'), name1: 'Élodie Martin' };
+  const duo = { id: 'd', bib: 'd', format: 'DUO', name1: 'Paul Durand', name2: 'Léa Roux', gender1: 'H', gender2: 'F' };
+  assert.equal(W.matchesSearch(solo, 'elodie'), true);
+  assert.equal(W.matchesSearch(solo, '  MARTIN '), true);
+  assert.equal(W.matchesSearch(duo, 'lea'), true);
+  assert.equal(W.matchesSearch(duo, 'elodie'), false);
+  assert.equal(W.matchesSearch(duo, ''), true);
+});
