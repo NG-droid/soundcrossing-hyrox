@@ -217,3 +217,44 @@
 .event-dd-option.active{background:linear-gradient(#3a3a3a,#141414);color:#fff;box-shadow:inset 3px 0 0 #d8242d}
 .event-dd-option.active strong+span{color:#d6d6d6}
 @media(max-width:700px){.event-picker-label{display:block;padding:0 0 8px}.event-picker{min-width:0}}
+/* Libellé « Événement » : petit, au-dessus du menu, comme un libellé de formulaire (Hyrox et WOD). */
+.event-selector{flex-wrap:wrap;column-gap:28px;row-gap:8px}
+.event-picker-label{flex-basis:100%;font-size:12px;font-weight:600;color:#555;letter-spacing:.3px}
+/* Tableaux harmonisés (Hyrox et WOD, tous les onglets) : colonnes à largeur fixe,
+   nom à gauche, tout le reste centré au milieu de la ligne. data-view = onglet affiché. */
+.race-table[data-view]{table-layout:fixed;width:100%}
+.race-table[data-view] th,.race-table[data-view] td{text-align:center;vertical-align:middle;padding-left:12px;padding-right:12px}
+.race-table[data-view] th:last-child,.race-table[data-view] td:last-child{padding-right:26px}
+/* Colonne du nom : à gauche, même retrait que l’en-tête. */
+.race-table[data-view] .name-col,
+.wod-table:is([data-view=athletes],[data-view=scores]) tr:not(.group-row)>:first-child,
+.wod-table:is([data-view=workouts],[data-view=ranking]) tr>:nth-child(2){text-align:left!important;width:30%;padding-left:26px!important}
+.race-table[data-view] .names-button{padding:0}
+/* Colonne du rang (et du n° de WOD) : étroite, centrée. */
+.race-table[data-view] #rank-heading,.wod-table:is([data-view=workouts],[data-view=ranking]) th:first-child{width:90px}
+/* Colonne Actions : juste la place des boutons. */
+.race-table[data-view=participants] th:last-child{width:130px}
+.race-table:is([data-view=scores],[data-view=live]) th:last-child{width:290px}
+.race-table[data-view=results] th:last-child{width:160px}
+.wod-table:is([data-view=athletes],[data-view=workouts]) th:last-child{width:240px}
+.wod-table[data-view=scores] th:last-child{width:130px}
+.wod-table[data-view=scores] tr>:nth-child(2){width:36%}
+.race-table[data-view] .row-actions,.race-table[data-view] .arrival-entry,.race-table[data-view] .score-inputs{justify-content:center}
+.wod-table[data-view] .actions{text-align:center!important}
+.wod-table[data-view] .actions .button{margin:0 3px}
+/* Même écriture partout : nom en gras 14 px, valeurs 15 px, temps et totaux en grand. */
+.race-table[data-view] .names-button,.race-table[data-view] .score-name,.wod-table[data-view] tr:not(.group-row) td strong{font-size:14px;font-weight:700;color:#222}
+.race-table[data-view] .recorded-time,.wod-table[data-view=ranking] td{font-size:15px!important;font-weight:600;font-variant-numeric:tabular-nums}
+.race-table[data-view] .time-cell,.wod-table[data-view] .score-saved,.wod-table[data-view=ranking] td.rank{font-size:20px!important;font-weight:800;color:#1b1b1b;font-variant-numeric:tabular-nums}
+.wod-table[data-view] td.rank{color:#1b1b1b}
+.wod-table[data-view] td .muted{font-weight:400;margin-top:2px}
+.race-table[data-view] .result-rank{display:inline-grid;place-items:center;min-width:34px;height:34px;margin:0;font-size:15px;font-weight:800}
+.race-table[data-view] th{white-space:normal;line-height:1.4}
+.race-table[data-view] #rank-heading,.wod-table:is([data-view=workouts],[data-view=ranking]) th:first-child{width:110px!important}
+.race-table[data-view] th.name-col{width:30%!important}
+.race-table[data-view] th:nth-last-child(2){width:auto}
+.race-table[data-view] .score-time{margin:0;vertical-align:middle}
+.race-table[data-view] .score-time:disabled{text-align:center}
+.race-table[data-view] .score-name span{padding:0}.race-table[data-view] .score-name .duo-join{padding:0 5px}
+.race-table[data-view] .score-inputs input{margin:0}
+.wod-table[data-view=ranking] th:last-child{width:auto}
