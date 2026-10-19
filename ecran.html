@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light"><meta name="theme-color" content="#182422"><meta name="description" content="Classements en plein écran pour le public : les catégories défilent toutes seules.">
+  <title>Soundcrossing — Écran classement</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='20' fill='%23182422'/%3E%3Cpath d='M20 18h24c25 0 25 34 0 34H33v12H20zm13 12v10h10c8 0 8-10 0-10z' fill='%23d7fa64'/%3E%3C/svg%3E">
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}
+    body{background:#d4d5d8;color:#171717;font-family:Arial,Helvetica,sans-serif}
+    body.idle{cursor:none}
+    .screen{height:100dvh;display:flex;flex-direction:column;padding:2.2vh 4vw 0;background:radial-gradient(ellipse at 50% 35%,#fbfbfa 0,#eceef0 75%)}
+    .screen-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:2vw}
+    .screen-top img{height:clamp(60px,11vh,150px);width:auto;mix-blend-mode:multiply}
+    .screen-event{text-align:center}
+    .screen-event strong{display:block;font-size:clamp(20px,3.4vh,40px);font-weight:750;letter-spacing:-.4px}
+    .screen-event span{display:block;color:#555;font-size:clamp(13px,1.9vh,22px);margin-top:.6vh}
+    .screen-clock{justify-self:end;font-size:clamp(22px,4.4vh,54px);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+    .screen-bar{margin:2vh 0 1.6vh;background:linear-gradient(#3a3a3a,#141414);border-radius:12px;box-shadow:inset 0 1px 0 #ffffff30,inset 0 -4px 0 #d8242d,0 4px 12px #1e283240;color:#fff;text-align:center;padding:1.4vh 2vw 1.8vh;text-shadow:0 1px 1px #00000080}
+    .screen-bar small{display:block;color:#ff5a61;font-size:clamp(11px,1.7vh,20px);font-weight:700;letter-spacing:4px}
+    .screen-bar h1{margin:.4vh 0 0;font-size:clamp(28px,6.2vh,84px);font-weight:850;letter-spacing:-1px;line-height:1.1}
+    .board{flex:1;min-height:0}
+    .board.enter{animation:enter .55s ease-out}
+    @keyframes enter{from{opacity:0;transform:translateY(1.5vh)}to{opacity:1;transform:none}}
+    .board-table{display:grid;row-gap:.9vh}
+    .board-row{display:contents}
+    .board-row>span{display:flex;align-items:center;justify-content:center;height:6.4vh;background:linear-gradient(#ffffff,#eef0f2);border-top:1px solid #b9bdc2;border-bottom:1px solid #9fa3a9;font-size:clamp(16px,3.3vh,44px);font-weight:700;font-variant-numeric:tabular-nums;box-shadow:0 2px 4px #1e283226;white-space:nowrap;overflow:hidden;padding:0 1vw}
+    .board-row>span:first-child{border-left:1px solid #9fa3a9;border-radius:10px 0 0 10px}
+    .board-row>span:last-child{border-right:1px solid #9fa3a9;border-radius:0 10px 10px 0}
+    .board-row>span.names{justify-content:flex-start;font-size:clamp(17px,3.6vh,48px);text-overflow:ellipsis}
+    .names i{font-style:normal;color:#8a8d92;margin:0 .6vw;font-weight:400}
+    .value sup{font-size:.55em;margin-left:1px}
+    .board-head>span{height:auto;min-height:3.6vh;white-space:normal;text-align:center;line-height:1.15;padding:0 1vw .6vh;align-items:flex-end;background:none;border:0!important;box-shadow:none;color:#555;font-size:clamp(10px,1.6vh,19px);letter-spacing:1.5px;font-weight:700}
+    .board-head>span:nth-child(2){justify-content:flex-start}
+    .rank{display:inline-grid;place-items:center;min-width:5.2vh;height:5.2vh;padding:0 .6vh;border-radius:8px;background:#f3f3f3;border:1px solid #c4c7cc;color:#222;font-size:clamp(16px,3.1vh,40px);font-weight:850}
+    .rank.provisional{color:#555}
+    .rank.rank-1{background:#d8242d;border-color:#b01b24;color:#fff;box-shadow:inset 0 1px 0 #ffffff40}
+    .rank.rank-2{background:#c6cdd5;border-color:#a9b1ba}
+    .rank.rank-3{background:#ce9978;border-color:#b58263;color:#fff}
+    .board-row.top-1>span{background:linear-gradient(#ffffff,#f6e9ea)}
+    .board-empty{margin:8vh 0 0;text-align:center;font-size:clamp(18px,3.4vh,40px);color:#555}
+    .screen-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #b9bdc2;padding:1.2vh 0 1.4vh;margin-top:1vh;color:#5a5a5a;font-size:clamp(10px,1.6vh,18px);letter-spacing:2px}
+    .screen-foot strong{color:#b62029}
+    .progress{height:5px;background:#c9ccd1}.progress i{display:block;height:100%;width:0;background:#d8242d}
+    .paused{position:fixed;top:2vh;right:2vw;background:#1b1b1b;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;letter-spacing:1px}
+    .hint{position:fixed;left:50%;bottom:5vh;transform:translateX(-50%);background:#1b1b1bd9;color:#fff;border-radius:10px;padding:10px 16px;font-size:14px;transition:opacity .4s}
+    body.idle .hint{opacity:0}
+  </style>
+  <script defer src="dist/core.js"></script><script defer src="dist/wod-core.js"></script><script defer src="dist/ecran.js"></script>
+</head>
+<body>
+  <section id="screen" class="screen" aria-live="polite">
+    <header class="screen-top"><img src="assets/soundcrossing-logo.png" alt="Sound Crossing"><div class="screen-event"><strong id="event"></strong><span id="date"></span></div><div id="clock" class="screen-clock"></div></header>
+    <div class="screen-bar"><small id="kicker"></small><h1 id="category"></h1></div>
+    <div id="board" class="board"></div>
+    <footer class="screen-foot"><span id="brand"></span><strong id="position"></strong><span>CLASSEMENTS EN DIRECT</span></footer>
+  </section>
+  <div class="progress"><i id="progress"></i></div>
+  <div id="paused" class="paused" hidden>PAUSE</div>
+  <div class="hint">Cliquez pour le plein écran · ← → changer de catégorie · Espace pause</div>
+</body>
+</html>
