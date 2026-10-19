@@ -258,6 +258,8 @@
 .race-table[data-view] .score-name span{padding:0}.race-table[data-view] .score-name .duo-join{padding:0 5px}
 .race-table[data-view] .score-inputs input{margin:0}
 .wod-table[data-view=ranking] th:last-child{width:auto}
+/* Boutons du titre : toujours sur une seule ligne ; c’est le texte de description qui passe à la ligne. */
+@media(min-width:701px){.list-heading>div:first-child{flex:1 1 auto;min-width:0}.list-heading-actions{flex:0 0 auto;flex-wrap:nowrap}}
 
 /* Témoin de sauvegarde (Hyrox et WOD) : pastille en relief, vert = copie sur l’ordinateur à jour. */
 .save-badge{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;cursor:default;box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 1px 2px rgba(0,0,0,.12)}
