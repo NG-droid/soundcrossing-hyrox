@@ -43,6 +43,12 @@ var Wod;
     Wod.group = group;
     function athleteLabel(a) { return a.format === 'DUO' ? `${a.name1} & ${a.name2}` : a.name1; }
     Wod.athleteLabel = athleteLabel;
+    // Recherche par nom, comme dans l’Hyrox : sans accents ni majuscules, sur le nom affiché (les deux noms d’un duo).
+    function matchesSearch(a, query) {
+        const q = String(query ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+        return !q || athleteLabel(a).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(q);
+    }
+    Wod.matchesSearch = matchesSearch;
     function clock(ms) {
         const s = Math.round(ms / 1000);
         const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;

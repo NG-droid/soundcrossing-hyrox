@@ -168,10 +168,15 @@ namespace Wod {
     $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
     (document.querySelector('.wod-table') as HTMLElement).classList.toggle('wod-ranking', view === 'ranking');
     (document.querySelector('.wod-table') as HTMLElement).dataset.view = view;
-    $('podium-footer').hidden = true;
+    $('podium-footer').hidden = true; $('search-bar').hidden = view === 'workouts';
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
+  // Recherche par nom, comme dans l’Hyrox : filtre Participants, Scores et Classements (les rangs ne changent pas).
+  const searchText = (): string => $<HTMLInputElement>('search').value;
+  const found = (a: Athlete): boolean => matchesSearch(a, searchText());
+  const NO_MATCH = 'Aucun participant ne correspond à la recherche.';
   function setTable(head: string[], rows: string[], emptyText: string): void {
+    if (!rows.length && searchText().trim() && view !== 'workouts') emptyText = NO_MATCH;
     $('table-head').innerHTML = `<tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>`;
     $('table-body').innerHTML = rows.join('');
     $('empty').hidden = rows.length > 0;
@@ -207,7 +212,7 @@ namespace Wod {
     const finalists = state.athletes.filter(a => isFinalist(state, a)).length;
     if (!finalists) onlyFinalists = false;
     if (finalists) $('chips').innerHTML = `<button class="format-chip${onlyFinalists ? ' active' : ''}" data-action="only-finalists" aria-pressed="${onlyFinalists}">Finalistes seulement (${finalists})</button>`;
-    const rows = state.athletes.filter(a => !onlyFinalists || isFinalist(state, a)).map(a =>
+    const rows = state.athletes.filter(a => (!onlyFinalists || isFinalist(state, a)) && found(a)).map(a =>
       `<tr><td><strong>${esc(athleteLabel(a))}</strong>${isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
     setTable(['PARTICIPANT / DUO', 'CATÉGORIE', 'ACTIONS'], rows, 'Aucun participant pour l’instant.');
   }
@@ -297,7 +302,7 @@ namespace Wod {
   // Participants affichés dans Scores (filtres niveau, groupe, « à saisir »), groupe par groupe.
   function scoreSections(w: Workout): { g: string; list: Athlete[] }[] {
     return groupsForLevel(state, scoreLevel).filter(g => scoreGroup === 'all' || g === scoreGroup)
-      .map(g => ({ g, list: competitors(state, w).filter(x => group(x) === g && (!onlyTodo || scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo')) }))
+      .map(g => ({ g, list: competitors(state, w).filter(x => group(x) === g && found(x) && (!onlyTodo || scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo')) }))
       .filter(s => s.list.length);
   }
 
@@ -444,7 +449,7 @@ namespace Wod {
       const cell = (w: Workout, r: GeneralRow): string => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${STATUS_LABELS[scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
       podiumFooter(ranking.length, pending);
       const pick = (a: Athlete): string => `<td>${isFinalist(state, a) ? `<button class="button compact finalist-on" data-unqualify="${a.id}" title="Retirer de la Finale">✓ Qualifié</button>` : `<button class="button compact" data-qualify-one="${a.id}">Qualifier</button>`}</td>`;
-      const rows = ranking.map(r =>
+      const rows = ranking.filter(r => found(r.athlete)).map(r =>
         `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? group(r.athlete) : categoryLabel(category(r.athlete)))}</div></td>${wods.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td>${phase === 'qualif' && final ? pick(r.athlete) : ''}</tr>`);
       setTable(['RANG', 'PARTICIPANT', ...wods.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS', ...(phase === 'qualif' && final ? ['FINALE'] : [])], rows,
         phase === 'final' ? 'Aucun qualifié dans cette catégorie.' : 'Aucun participant dans cette catégorie.');
@@ -456,9 +461,9 @@ namespace Wod {
     heading(w.name, `${TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
     const label = (a: Athlete): string => `<strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(a.level ? group(a) : categoryLabel(category(a)))}</div>`;
     podiumFooter(workoutRanking(state, w, cat).length, todo);
-    const rows = workoutRanking(state, w, cat).map(p =>
+    const rows = workoutRanking(state, w, cat).filter(p => found(p.athlete)).map(p =>
       `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${pointsFor(p.rank)} pts</td>` : ''}</tr>`);
-    for (const a of inCat) if (state.scores[w.id]?.[a.id]?.forfeit)
+    for (const a of inCat) if (state.scores[w.id]?.[a.id]?.forfeit && found(a))
       rows.push(`<tr><td class="rank">—</td><td>${label(a)}</td><td><span class="outcome-badge">Forfait</span></td>${state.method === 'points' ? '<td>0 pt</td>' : ''}</tr>`);
     setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
   }
@@ -737,7 +742,8 @@ namespace Wod {
     function toggleEventList(open?: boolean): void { const list = document.querySelector<HTMLElement>('#event-selector .event-dd-list'); const toggle = document.querySelector<HTMLElement>('#event-selector .event-dd-toggle'); if (!list || !toggle) return; const show = open ?? list.hidden; list.hidden = !show; toggle.setAttribute('aria-expanded', String(show)); }
     document.addEventListener('click', event => { if (!(event.target as HTMLElement).closest('#event-selector')) toggleEventList(false); });
     document.addEventListener('keydown', event => { if (event.key === 'Escape') toggleEventList(false); });
-    $('event-selector').addEventListener('click', event => { const target = event.target as HTMLElement; if (target.closest('.event-dd-toggle')) { toggleEventList(); return; } const pick = target.closest<HTMLElement>('[data-event-id]'); toggleEventList(false); if (!pick || pick.dataset.eventId === store.selectedId) return; selectEvent(pick.dataset.eventId || ''); rememberEvent(); render(); });
+    $('event-selector').addEventListener('click', event => { const target = event.target as HTMLElement; if (target.closest('.event-dd-toggle')) { toggleEventList(); return; } const pick = target.closest<HTMLElement>('[data-event-id]'); toggleEventList(false); if (!pick || pick.dataset.eventId === store.selectedId) return; selectEvent(pick.dataset.eventId || ''); $<HTMLInputElement>('search').value = ''; rememberEvent(); render(); });
+    $('search').addEventListener('input', render);
     $('settings-button').addEventListener('click', () => $<HTMLDialogElement>('settings-dialog').showModal());
     $('export-button').addEventListener('click', exportExcel);
     $('backup-button').addEventListener('click', exportBackup);
