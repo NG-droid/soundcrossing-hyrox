@@ -234,7 +234,10 @@ var Wod;
         $('event-format-badge').hidden = !hasEvent;
         $('new-event-button').textContent = hasEvent ? '+ Nouvel événement' : '+ Créer un événement';
         $('event-selector-panel').hidden = store.events.length < 2;
-        $('event-selector').innerHTML = store.events.map(e => `<button type="button" class="event-pick${e.id === store.selectedId ? ' active' : ''}" data-event-id="${esc(e.id)}" aria-pressed="${e.id === store.selectedId}"><strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${Wod.eventFormatLabel(e.format)}</em></span></button>`).join('');
+        {
+            const current = store.events.find(e => e.id === store.selectedId) || store.events[0];
+            $('event-selector').innerHTML = current ? `<button type="button" class="event-dd-toggle" aria-haspopup="listbox" aria-expanded="false"><span class="event-dd-current">${((e) => `<strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${Wod.eventFormatLabel(e.format)}</em></span>`)(current)}</span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="event-dd-list" role="listbox" hidden>${store.events.map(e => `<button type="button" role="option" class="event-dd-option${e.id === current.id ? ' active' : ''}" data-event-id="${esc(e.id)}" aria-selected="${e.id === current.id}"><strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${Wod.eventFormatLabel(e.format)}</em></span></button>`).join('')}</div>` : '';
+        }
         if (!hasEvent) {
             $('title').textContent = 'Compétition WOD';
             $('session-date').textContent = 'Créez un événement pour commencer.';
@@ -1030,7 +1033,16 @@ var Wod;
         $('new-event-button').addEventListener('click', () => openEvent(false));
         $('no-event-create').addEventListener('click', () => openEvent(false));
         $('delete-event').addEventListener('click', deleteEvent);
-        $('event-selector').addEventListener('click', event => { const pick = event.target.closest('[data-event-id]'); if (!pick || pick.dataset.eventId === store.selectedId)
+        function toggleEventList(open) { const list = document.querySelector('#event-selector .event-dd-list'); const toggle = document.querySelector('#event-selector .event-dd-toggle'); if (!list || !toggle)
+            return; const show = open ?? list.hidden; list.hidden = !show; toggle.setAttribute('aria-expanded', String(show)); }
+        document.addEventListener('click', event => { if (!event.target.closest('#event-selector'))
+            toggleEventList(false); });
+        document.addEventListener('keydown', event => { if (event.key === 'Escape')
+            toggleEventList(false); });
+        $('event-selector').addEventListener('click', event => { const target = event.target; if (target.closest('.event-dd-toggle')) {
+            toggleEventList();
+            return;
+        } const pick = target.closest('[data-event-id]'); toggleEventList(false); if (!pick || pick.dataset.eventId === store.selectedId)
             return; selectEvent(pick.dataset.eventId || ''); rememberEvent(); render(); });
         $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
         $('export-button').addEventListener('click', exportExcel);
