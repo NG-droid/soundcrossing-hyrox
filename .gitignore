@@ -16,3 +16,7 @@ pace-session-*.json
 sauvegarde-wod-*.json
 maj-precedente/
 *.maj
+
+# Lanceur Windows : journal et ancien lanceur remplacé par une mise à jour
+soundcrossing-journal.txt
+*.ancien

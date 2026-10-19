@@ -153,6 +153,33 @@ class UpdateInstallTest(unittest.TestCase):
         self.assertEqual((Path(self.folder.name) / "VERSION").read_text(), "v1")
         self.assertEqual(list(Path(self.folder.name).rglob("*.maj")), [])
 
+    def test_running_launcher_is_renamed_then_replaced(self):
+        """Comme Windows : impossible d’écraser Soundcrossing.exe en marche, mais on peut le renommer."""
+        root = Path(self.folder.name)
+        (root / "Soundcrossing.exe").write_text("ancien lanceur")
+        real_replace, running = Path.replace, {"inode": (root / "Soundcrossing.exe").stat().st_ino}
+
+        def windows_replace(path, target):
+            target = Path(target)
+            if target.exists() and target.stat().st_ino == running["inode"]:
+                raise PermissionError("fichier en cours d’utilisation")
+            return real_replace(path, target)
+
+        files = {name: b"nouveau" for name in [*self.names, "Soundcrossing.exe"]}
+        with mock.patch.object(Path, "replace", windows_replace):
+            self.module.install(files, "v2")
+        self.assertEqual((root / "Soundcrossing.exe").read_text(), "nouveau")
+        self.assertEqual((root / "Soundcrossing.exe.ancien").read_text(), "ancien lanceur")
+        self.assertEqual(set(self.contents().values()), {"nouveau"})
+        self.assertEqual((root / "VERSION").read_text(), "v2")
+        # Version suivante avec le même lanceur : il n’est pas renommé une nouvelle fois.
+        (root / "Soundcrossing.exe.ancien").unlink()
+        running["inode"] = (root / "Soundcrossing.exe").stat().st_ino
+        with mock.patch.object(Path, "replace", windows_replace):
+            self.module.install(files, "v3")
+        self.assertFalse((root / "Soundcrossing.exe.ancien").exists())
+        self.assertEqual((root / "VERSION").read_text(), "v3")
+
 
 if __name__ == "__main__":
     unittest.main()

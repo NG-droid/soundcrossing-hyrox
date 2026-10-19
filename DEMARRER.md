@@ -2,14 +2,14 @@
 
 ## Windows : version autonome recommandée
 
-Utilisez `Soundcrossing-Windows-x64.zip` pour un PC Windows 10/11 Intel ou AMD 64 bits. Clic droit → Extraire tout → ouvrir le dossier Soundcrossing → double-cliquer `Lancer Soundcrossing.bat`. Python est inclus : aucune installation séparée et aucun accès Internet nécessaires. Gardez la fenêtre de lancement ouverte. Guide dédié : [WINDOWS.md](WINDOWS.md). Le paquet est préparé et contrôlé sur Mac ; son lancement Windows reste à tester sur le PC de la salle.
+Utilisez `Soundcrossing-Windows-x64.zip` pour un PC Windows 10/11 Intel ou AMD 64 bits. Clic droit → Extraire tout → ouvrir le dossier Soundcrossing → double-cliquer `Soundcrossing.exe`. Python est inclus : aucune installation séparée et aucun accès Internet nécessaires. Pas de fenêtre noire : Soundcrossing reste en icône près de l’horloge (clic droit → Quitter pour l’arrêter). Guide dédié : [WINDOWS.md](WINDOWS.md). Le paquet est préparé et contrôlé sur Mac ; son lancement Windows reste à tester sur le PC de la salle.
 
 ## Autre archive : version Mac / source avec Python installé
 
 1. Décompressez entièrement `Soundcrossing.zip` dans un dossier que vous garderez. Ne lancez pas directement depuis le ZIP.
 2. Python 3 est nécessaire. S’il est absent, installez-le depuis [python.org](https://www.python.org/downloads/). Sur Windows, cochez « Add Python to PATH ».
-3. **Mac :** double-cliquez `Lancer Soundcrossing.command`. **Windows :** double-cliquez `Lancer Soundcrossing.bat`.
-4. Le navigateur s’ouvre sur `http://127.0.0.1:8767/`. Gardez la fenêtre de lancement ouverte. Fermer cette fenêtre arrête l’application ; les inscriptions restent enregistrées.
+3. **Mac :** double-cliquez `Lancer Soundcrossing.command`. **Windows :** double-cliquez `Soundcrossing.exe` (ou `Lancer Soundcrossing.bat`, qui l’ouvre).
+4. Le navigateur s’ouvre sur `http://127.0.0.1:8767/`. Gardez le lanceur en marche (sur Mac la fenêtre du Terminal, sur Windows l’icône près de l’horloge). L’arrêter ferme l’application ; les inscriptions restent enregistrées.
 
 Pour les prochaines utilisations, le même double-clic suffit. Le fonctionnement est hors connexion, une fois Python installé. La version Mac a été vérifiée ici ; le lanceur Windows est fourni mais n’a pas été exécuté sur Windows.
 

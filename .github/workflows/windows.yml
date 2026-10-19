@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Compilateur Windows pour Soundcrossing.exe
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
       - run: npm ci
       - run: npm test
       - name: Tests du serveur (port et données temporaires)
@@ -38,4 +40,4 @@ jobs:
           gh release delete windows --yes --cleanup-tag || true
           gh release create windows livraison/Soundcrossing-Windows-x64.zip livraison/VERSION.txt \
             --title "Soundcrossing pour Windows" \
-            --notes "Dernière version, mise à jour automatiquement. Téléchargez Soundcrossing-Windows-x64.zip, faites clic droit → Extraire tout, puis double-cliquez sur « Lancer Soundcrossing.bat ». Rien à installer. Les versions suivantes s’installent toutes seules au lancement quand Internet est disponible."
+            --notes "Dernière version, mise à jour automatiquement. Téléchargez Soundcrossing-Windows-x64.zip, faites clic droit → Extraire tout, puis double-cliquez sur « Soundcrossing.exe » (aucune fenêtre noire : Soundcrossing reste en icône près de l’horloge, clic droit → Quitter pour l’arrêter). Rien à installer. Les versions suivantes s’installent toutes seules au lancement quand Internet est disponible."

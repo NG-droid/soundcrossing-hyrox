@@ -145,8 +145,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 RELEASE = "https://github.com/NG-droid/soundcrossing-hyrox/releases/download/windows"
 VERSION_FILE = ROOT / "VERSION"
-# Fichiers remplacés par une mise à jour. Le lanceur .bat et runtime/ ne sont jamais touchés :
-# Windows relit un .bat en cours d’exécution, et Python ne change pas d’une version à l’autre.
+# Fichiers remplacés par une mise à jour. runtime/ n’est jamais touché : Python ne change pas d’une version à l’autre.
+# Le .bat peut l’être : cmd lit en entier le bloc « if exist … ( … ) » qui lance Python avant de l’exécuter,
+# il ne relit donc plus le fichier pendant que le serveur tourne. Le .exe en marche est renommé (voir replace()).
 UPDATABLE = (
     "index.html", "styles.css", "club.css", "server.py",
     "assets/soundcrossing-logo.jpg", "assets/soundcrossing-logo.png", "assets/ORIGINE.md",
@@ -154,11 +155,32 @@ UPDATABLE = (
     "wod.html", "wod.css", "dist/wod-core.js", "dist/wod-app.js", "dist/modele.js", "dist/saisie.js",
     "ecran.html", "dist/ecran.js",
     "vendor/xlsx.full.min.js", "vendor/SheetJS-LICENSE.txt", "LISEZ-MOI.txt",
+    "Soundcrossing.exe", "Lancer Soundcrossing.bat",
 )
+LAUNCHER = ROOT / "Soundcrossing.exe"
+# Lancé par Soundcrossing.exe : pas de fenêtre, les messages vont dans soundcrossing-journal.txt.
+WITHOUT_WINDOW = "--lanceur" in sys.argv
 
 
 REQUIRED = ("index.html", "server.py", "dist/models.js", "dist/core.js", "dist/app.js", "wod.html", "dist/wod-core.js", "dist/wod-app.js")
 BACKUP_DIR = ROOT / "maj-precedente"
+
+
+def replace(pending: Path, target: Path):
+    """Windows refuse de remplacer un .exe en marche mais accepte de le renommer : l’ancien lanceur devient
+    « .ancien » (effacé au démarrage suivant) et le nouveau prend sa place pour le prochain lancement."""
+    try:
+        pending.replace(target)
+    except PermissionError:
+        if target.suffix != ".exe" or not target.exists():
+            raise
+        if target.read_bytes() == pending.read_bytes():  # lanceur inchangé : rien à remplacer
+            pending.unlink()
+            return
+        old = target.with_name(target.name + ".ancien")
+        old.unlink(missing_ok=True)
+        target.replace(old)
+        pending.replace(target)
 
 
 def install(files, version):
@@ -187,15 +209,18 @@ def install(files, version):
         # 3. Remplacement. VERSION est écrit en dernier : une coupure avant relance la mise à jour au prochain démarrage.
         try:
             for name in files:
-                (ROOT / name).with_name(Path(name).name + ".maj").replace(ROOT / name)
+                replace((ROOT / name).with_name(Path(name).name + ".maj"), ROOT / name)
             VERSION_FILE.write_text(version, encoding="utf-8")
         except Exception:
             for name in files:
                 saved = BACKUP_DIR / name
-                if saved.exists():
-                    shutil.copy2(saved, ROOT / name)
-                else:
-                    (ROOT / name).unlink(missing_ok=True)
+                try:
+                    if saved.exists():
+                        shutil.copy2(saved, ROOT / name)
+                    else:
+                        (ROOT / name).unlink(missing_ok=True)
+                except OSError:  # le lanceur en marche reste tel quel ; on remet tous les autres fichiers
+                    pass
             raise
     finally:
         for pending in staged:
@@ -206,6 +231,10 @@ def update():
     """Récupère la dernière version publiée. Sans Internet, l’application démarre telle quelle."""
     if "--no-update" in sys.argv or os.environ.get("SOUNDCROSSING_NO_UPDATE"):
         return
+    try:  # ancien lanceur laissé par la mise à jour précédente
+        LAUNCHER.with_name(LAUNCHER.name + ".ancien").unlink(missing_ok=True)
+    except OSError:
+        pass
     try:
         if (ROOT / ".git").exists():
             subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=ROOT, timeout=30, check=False)
@@ -252,7 +281,14 @@ def main():
         except (URLError, ValueError, OSError):
             print(f"Le port {PORT} est occupé. Fermez l’autre application puis relancez Soundcrossing.")
             sys.exit(1)
-    print(f"Soundcrossing — {URL}\nDonnées enregistrées dans : {DATA_FILE.parent}\nGardez cette fenêtre ouverte pendant la session. Ctrl+C pour arrêter.", flush=True)
+    if WITHOUT_WINDOW:
+        stop = "Pour arrêter : clic droit sur l’icône Soundcrossing près de l’horloge, puis Quitter."
+    else:
+        stop = "Gardez cette fenêtre ouverte pendant la session. Ctrl+C pour arrêter."
+        if LAUNCHER.exists():
+            stop += ("\n\nNouveau : la prochaine fois, ouvrez Soundcrossing.exe (dans ce dossier) ou « Lancer Soundcrossing.bat » :"
+                     "\nplus de fenêtre noire, Soundcrossing reste en icône près de l’horloge.")
+    print(f"Soundcrossing — {URL}\nDonnées enregistrées dans : {DATA_FILE.parent}\n{stop}", flush=True)
     if "--no-open" not in sys.argv:
         webbrowser.open(URL)
     try:
