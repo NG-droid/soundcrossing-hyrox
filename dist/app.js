@@ -342,7 +342,7 @@ var PaceApp;
         $('session-button').hidden = !race;
         $('event-format-note').textContent = race?.format === 'DUO' ? 'Événement Duo — HH / FF / HF' : race?.format === 'SOLO' ? 'Événement Solo — H / F' : 'Événement Solo + Duo — tous les formats';
         $('race-selector-panel').hidden = state.session.races.length < 2;
-        $('race-selector').innerHTML = state.session.races.map(r => `<option value="${esc(r.id)}"${r.id === selectedRaceId ? ' selected' : ''}>${esc(r.title)} · ${esc(raceLabel(r))} · ${eventFormatLabel(r)}</option>`).join('');
+        $('race-selector').innerHTML = state.session.races.map(r => `<button type="button" class="event-pick${r.id === selectedRaceId ? ' active' : ''}" data-event-id="${esc(r.id)}" aria-pressed="${r.id === selectedRaceId}"><strong>${esc(r.title)}</strong><span>${esc(raceLabel(r))}<em class="event-pick-format">${eventFormatLabel(r)}</em></span></button>`).join('');
         $('total-athletes').textContent = String(entries.reduce((n, e) => n + (e.format === 'DUO' ? 2 : 1), 0));
         for (const [id, count] of [['nav-count', entries.length], ['nav-live', running], ['nav-results', finished], ['nav-scores', finished], ['stat-teams', entries.length], ['stat-running', running], ['stat-finished', finished]])
             $(id).textContent = String(count);
@@ -1242,7 +1242,8 @@ var PaceApp;
     } });
     ['empty-add', 'list-add'].forEach(id => $(id).addEventListener('click', () => openEntry()));
     $('new-race-button').addEventListener('click', () => openRace());
-    $('race-selector').addEventListener('change', () => { selectedRaceId = $('race-selector').value; activeFormat = 'all'; focusId = ''; $('search').value = ''; rememberEvent(); render(); });
+    $('race-selector').addEventListener('click', event => { const pick = event.target.closest('[data-event-id]'); if (!pick || pick.dataset.eventId === selectedRaceId)
+        return; selectedRaceId = pick.dataset.eventId || ''; activeFormat = 'all'; focusId = ''; $('search').value = ''; rememberEvent(); render(); });
     $('template-button').addEventListener('click', exportExcelTemplate);
     $('list-template').addEventListener('click', exportExcelTemplate);
     $('excel-help-button').addEventListener('click', openExcelHelp);

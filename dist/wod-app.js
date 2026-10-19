@@ -234,7 +234,7 @@ var Wod;
         $('event-format-badge').hidden = !hasEvent;
         $('new-event-button').textContent = hasEvent ? '+ Nouvel événement' : '+ Créer un événement';
         $('event-selector-panel').hidden = store.events.length < 2;
-        $('event-selector').innerHTML = store.events.map(e => `<option value="${esc(e.id)}"${e.id === store.selectedId ? ' selected' : ''}>${esc(e.title)} · ${esc(dateLabel(e.date))} · ${Wod.eventFormatLabel(e.format)}</option>`).join('');
+        $('event-selector').innerHTML = store.events.map(e => `<button type="button" class="event-pick${e.id === store.selectedId ? ' active' : ''}" data-event-id="${esc(e.id)}" aria-pressed="${e.id === store.selectedId}"><strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${Wod.eventFormatLabel(e.format)}</em></span></button>`).join('');
         if (!hasEvent) {
             $('title').textContent = 'Compétition WOD';
             $('session-date').textContent = 'Créez un événement pour commencer.';
@@ -1030,7 +1030,8 @@ var Wod;
         $('new-event-button').addEventListener('click', () => openEvent(false));
         $('no-event-create').addEventListener('click', () => openEvent(false));
         $('delete-event').addEventListener('click', deleteEvent);
-        $('event-selector').addEventListener('change', () => { selectEvent($('event-selector').value); rememberEvent(); render(); });
+        $('event-selector').addEventListener('click', event => { const pick = event.target.closest('[data-event-id]'); if (!pick || pick.dataset.eventId === store.selectedId)
+            return; selectEvent(pick.dataset.eventId || ''); rememberEvent(); render(); });
         $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
         $('export-button').addEventListener('click', exportExcel);
         $('backup-button').addEventListener('click', exportBackup);
