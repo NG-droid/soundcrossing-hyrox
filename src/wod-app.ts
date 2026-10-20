@@ -331,17 +331,45 @@ namespace Wod {
     const groups = groupsForLevel(state, scoreLevel);
     if (scoreGroup !== 'all' && !groups.includes(scoreGroup)) scoreGroup = 'all';
     if (groups.length > 1) chips('chips3', [{ key: 'all', label: 'Tous les groupes' }, ...groups.map(g => groupChip(g, scoreLevel))], scoreGroup, 'score-group');
-    const rows: string[] = [];
+    const rows: string[] = [], points = state.method === 'points';
     for (const { g, list } of scoreSections(w)) {
-      if (groups.length > 1) rows.push(`<tr class="group-row"><td colspan="4">${esc(g)}</td></tr>`);
+      if (groups.length > 1) rows.push(`<tr class="group-row"><td colspan="${points ? 6 : 5}">${esc(g)}</td></tr>`);
+      const places = livePlaces(w, g);
       for (const a of list) {
         const forfeit = !!state.scores[w.id]?.[a.id]?.forfeit;
-        rows.push(`<tr><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${savedText(w, a)}</td><td class="actions">${forfeit ? `<button class="button compact" data-reinstate="${a.id}">Annuler le forfait</button>` : `<button class="button compact" data-forfeit="${a.id}">Forfait</button>`}</td></tr>`);
+        rows.push(`<tr><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${savedText(w, a)}</td>${placeCells(w, a, places)}<td class="actions">${forfeit ? `<button class="button compact" data-reinstate="${a.id}">Annuler le forfait</button>` : `<button class="button compact" data-forfeit="${a.id}">Forfait</button>`}</td></tr>`);
       }
     }
     const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
     const none = w.phase === 'final' && !competitors(state, w).length ? 'Aucun qualifié pour la Finale : qualifiez-les dans l’onglet 4. Classements.' : 'Ajoutez des participants dans l’onglet 1.';
-    setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', 'ACTIONS'], rows, onlyTodo && competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
+    setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', 'PLACE', ...(points ? ['POINTS'] : []), 'ACTIONS'], rows, onlyTodo && competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
+  }
+  // Place en direct sur ce WOD, dans le groupe (niveau + catégorie) : provisoire (pastille grise) tant qu’un score du groupe reste à saisir.
+  function livePlaces(w: Workout, g: string): Places {
+    const final = !competitors(state, w).some(x => group(x) === g && scoreStatus(w, state.scores[w.id]?.[x.id]) === 'todo');
+    return { ranks: new Map(workoutRanking(state, w, g).map(p => [p.athlete.id, p.rank])), final };
+  }
+  // Colonnes Place (et Points avec la table de points) : « — » sans score, 0 pt en forfait.
+  type Places = { ranks: Map<string, number>; final: boolean };
+  function placeText(a: Athlete, places: Places): string {
+    const rank = places.ranks.get(a.id);
+    return rank ? rankBadge(rank, places.final) : '<span class="muted">—</span>';
+  }
+  function pointsText(w: Workout, a: Athlete, places: Places): string {
+    const rank = places.ranks.get(a.id);
+    return rank ? `${pointsFor(rank)} pts` : state.scores[w.id]?.[a.id]?.forfeit ? '0 pt' : '<span class="muted">—</span>';
+  }
+  function placeCells(w: Workout, a: Athlete, places: Places): string {
+    return `<td class="rank" id="place-${a.id}">${placeText(a, places)}</td>${state.method === 'points' ? `<td class="score-saved" id="points-${a.id}">${pointsText(w, a, places)}</td>` : ''}`;
+  }
+  // Après une saisie, les places de tout le groupe bougent : on les met à jour sans redessiner le tableau (le curseur reste dans sa case).
+  function refreshPlaces(w: Workout, g: string): void {
+    const places = livePlaces(w, g);
+    for (const a of competitors(state, w).filter(x => group(x) === g)) {
+      const place = document.getElementById(`place-${a.id}`), pts = document.getElementById(`points-${a.id}`);
+      if (place) place.innerHTML = placeText(a, places);
+      if (pts) pts.innerHTML = pointsText(w, a, places);
+    }
   }
   // Participants affichés dans Scores (filtres niveau, groupe, « à saisir »), groupe par groupe.
   function scoreSections(w: Workout): { g: string; list: Athlete[] }[] {
@@ -425,7 +453,7 @@ namespace Wod {
       if (!save(false, `score de ${who ? athleteLabel(who) : 'participant'} sur ${w.name}`)) return;
       if (w.type === 'time') { const f = row.querySelector<HTMLInputElement>('[data-field="time"]'); if (f) f.value = Saisie.fromMs(score?.timeMs, shortTime(w)); }
       const a = state.athletes.find(x => x.id === athleteId);
-      if (a) $(`saved-${athleteId}`).innerHTML = savedText(w, a);
+      if (a) { $(`saved-${athleteId}`).innerHTML = savedText(w, a); refreshPlaces(w, group(a)); }
     } catch (error) {
       input.classList.add('invalid'); toast((error as Error).message);
     }

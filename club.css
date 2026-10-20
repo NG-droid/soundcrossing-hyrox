@@ -238,7 +238,9 @@
 .race-table[data-view=results] th:last-child{width:160px}
 .wod-table:is([data-view=athletes],[data-view=workouts]) th:last-child{width:240px}
 .wod-table[data-view=scores] th:last-child{width:130px}
-.wod-table[data-view=scores] tr>:nth-child(2){width:36%}
+.wod-table[data-view=scores] tr>:nth-child(2){width:30%}
+/* Saisie WOD : place (et points) en direct, colonnes étroites comme le rang des classements. */
+.wod-table[data-view=scores] th:nth-child(4),.wod-table[data-view=scores] th:nth-child(5):not(:last-child){width:110px}
 .race-table[data-view] .row-actions,.race-table[data-view] .arrival-entry,.race-table[data-view] .score-inputs{justify-content:center}
 .wod-table[data-view] .actions{text-align:center!important}
 .wod-table[data-view] .actions .button{margin:0 3px}
