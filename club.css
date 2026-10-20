@@ -278,5 +278,50 @@
 .day-tabs>div>button{box-shadow:inset 0 1px 0 #ffffffd0,0 -1px 4px #1e283238}
 .day-tabs>div>button.active{box-shadow:inset 0 1px 0 #ffffff40,inset 0 -3px 0 #d8242d,0 -2px 7px #1e283240}
 .event-dd-toggle{border-color:#8f939a;box-shadow:inset 0 1px 0 #ffffffd0,0 2px 3px #1e283238}}
+
+/* Diplômes de participation (Hyrox et WOD) : invisibles à l’écran, une page A4 par participant à l’impression. */
+.diplome-print{display:none}
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  body.print-diplomes{background:#fff!important}
+  body.print-diplomes>*:not(#diplome-print){display:none!important}
+  body.print-diplomes .diplome-print{display:block;color:#171717;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .diploma{box-sizing:border-box;height:276mm;padding:3mm;border:2.5px solid #171717;border-radius:4mm;break-after:page;break-inside:avoid;overflow:hidden}
+  .diploma:last-child{break-after:auto}
+  .diploma-frame{box-sizing:border-box;height:100%;border:1px solid #d8242d;border-radius:2.5mm;padding:12mm 16mm 10mm;display:flex;flex-direction:column;align-items:center;text-align:center;gap:5mm}
+  .diploma header{display:flex;flex-direction:column;align-items:center;gap:3mm}
+  .diploma header img{width:42mm;height:42mm;object-fit:contain}
+  .diploma-event strong{display:block;font-size:17pt;font-weight:800}
+  .diploma-event span{display:block;font-size:11pt;color:#555;margin-top:1mm}
+  .diploma-title{margin-top:4mm;display:flex;flex-direction:column;align-items:center}
+  .diploma-title b{font-size:46pt;font-weight:900;letter-spacing:6px;line-height:1}
+  .diploma-title span{font-size:16pt;letter-spacing:4px;text-transform:uppercase;color:#a52329;font-weight:700;margin-top:2mm}
+  .diploma-title:after{content:'';display:block;width:18mm;height:1mm;background:#d8242d;margin-top:4mm}
+  .diploma-to{margin:2mm 0 0;font-size:12pt;color:#555;font-style:italic}
+  .diploma-names{font-size:30pt;font-weight:850;line-height:1.15;letter-spacing:-.5px;overflow-wrap:anywhere;max-width:100%}
+  .diploma-names span{display:block}
+  .diploma-names em{display:block;font-style:normal;color:#d8242d;font-size:.55em;line-height:1.3}
+  .diploma-group{background:#1b1b1b;color:#fff;padding:2mm 6mm;border-radius:1.5mm;font-size:12pt;font-weight:700;letter-spacing:2px;box-shadow:inset 0 -1mm 0 #d8242d}
+  .diploma-result{display:flex;gap:8mm;margin-top:3mm}
+  .diploma-result>div{min-width:62mm;border:1px solid #9fa3a9;border-top:2mm solid #b8bfc4;border-radius:2.5mm;padding:3mm 6mm 4mm;display:flex;flex-direction:column;align-items:center}
+  .diploma-result small{font-size:9pt;letter-spacing:2px;text-transform:uppercase;color:#555;font-weight:700}
+  .diploma-result strong{font-size:38pt;font-weight:900;line-height:1.1;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+  .diploma-result strong sup{font-size:.4em;letter-spacing:0;margin-left:.5mm}
+  .diploma-result strong.diploma-score{font-size:28pt;margin:auto 0}
+  .diploma-result span{font-size:10pt;color:#555}
+  .diploma-1 .diploma-result>div:first-child{background:#1b1b1b;color:#fff;border-color:#1b1b1b;border-top-color:#d8242d}
+  .diploma-1 .diploma-result>div:first-child small,.diploma-1 .diploma-result>div:first-child span{color:#ddd}
+  .diploma-1 .diploma-result>div:first-child strong{color:#ff5862}
+  .diploma-3 .diploma-result>div:first-child{border-top-color:#b78a61}
+  .diploma-details{border-collapse:collapse;width:120mm;font-size:10pt}
+  .diploma-details th{font-size:8pt;letter-spacing:1.5px;text-transform:uppercase;color:#555;border-bottom:1.5px solid #171717;padding:1.5mm 2mm}
+  .diploma-details td{border-bottom:1px solid #ccc;padding:1.5mm 2mm}
+  .diploma-details td:first-child,.diploma-details th:first-child{text-align:left;font-weight:700}
+  .diploma-details sup{font-size:.7em}
+  .diploma footer{margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end;gap:10mm}
+  .diploma-sign{width:65mm;border-top:1px solid #555;padding-top:1.5mm;font-size:9pt;color:#555;text-align:left}
+  .diploma-brand{font-size:9pt;letter-spacing:3px;color:#a52329;font-weight:700}
+}
+
 /* Mode entraînement (Hyrox + WOD) : bandeau et pastille bien visibles sur un événement fictif. */
 .training-banner{display:flex;align-items:center;gap:16px;margin:0 0 24px;padding:14px 18px;border:1px solid #c4c4bf;border-left:5px solid #1b1b1b;border-radius:12px;background:repeating-linear-gradient(135deg,#fff 0 14px,#f3f3ef 14px 28px)}.training-banner p{flex:1;margin:0;font-size:14px;font-weight:600;color:#333}.training-pill,.event-pick-training{display:inline-block;background:#1b1b1b;color:#fff;border-bottom:2px solid #d8242d;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap}.event-pick-training{font-style:normal;font-size:10px;letter-spacing:1px;padding:3px 7px;margin-left:6px}@media(max-width:700px){.training-banner{flex-wrap:wrap}}

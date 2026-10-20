@@ -46,7 +46,7 @@
 @media print{
   @page{size:A4 portrait;margin:10mm}
   body{background:#fff!important}
-  body>*:not(#jury-print){display:none!important}
+  body:not(.print-diplomes)>*:not(#jury-print){display:none!important}
   .jury-print{display:block;color:#171717;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .jury-sheet{box-sizing:border-box;height:135mm;padding:4mm 6mm;overflow:hidden;border:1.5px solid #171717;border-radius:3mm;display:flex;flex-direction:column;gap:2mm;break-inside:avoid;font-size:10.5pt}
   .jury-sheet:nth-child(odd){margin-bottom:3mm}
