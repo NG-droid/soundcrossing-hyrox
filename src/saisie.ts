@@ -59,6 +59,18 @@ namespace Saisie {
       input.classList.remove('invalid');
     });
   }
+  // Mode entraînement (Hyrox et WOD) : 30 duos fictifs, dans l’ordre HH, FF, HF répété 10 fois (10 de chaque).
+  export interface DuoFictif { name1: string; name2: string; gender1: 'H' | 'F'; gender2: 'H' | 'F'; }
+  export function duosFictifs(): DuoFictif[] {
+    const hommes = ['Alex', 'Hugo', 'Tom', 'Lucas', 'Jules', 'Paul', 'Max', 'Théo', 'Louis', 'Nathan', 'Léo', 'Gabriel', 'Arthur', 'Raphaël', 'Ethan', 'Noah', 'Adam', 'Victor', 'Sacha', 'Mathis', 'Enzo', 'Baptiste', 'Simon', 'Antoine', 'Clément', 'Quentin', 'Romain', 'Julien', 'Bastien', 'Yanis'];
+    const femmes = ['Emma', 'Léa', 'Zoé', 'Manon', 'Nina', 'Inès', 'Chloé', 'Sarah', 'Camille', 'Jade', 'Louise', 'Alice', 'Lina', 'Rose', 'Anna', 'Julia', 'Lola', 'Clara', 'Eva', 'Juliette', 'Margot', 'Lou', 'Agathe', 'Romane', 'Mila', 'Elsa', 'Lucie', 'Pauline', 'Laura', 'Marie'];
+    const noms = ['Martin', 'Durand', 'Robert', 'Petit', 'Leroy', 'Moreau', 'Simon', 'Garcia', 'Bernard', 'Roux', 'Faure', 'Morel', 'Girard', 'Fabre', 'Vidal', 'Lambert', 'Roche', 'Blanc', 'Denis', 'Fournier', 'Mercier', 'Dupont', 'Bonnet', 'François', 'Legrand', 'Garnier', 'Chevalier', 'Rousseau', 'Perrin', 'Clément', 'Gauthier', 'Masson', 'Henry', 'Muller', 'Lefèvre', 'Barbier', 'Arnaud', 'Giraud', 'Brun', 'Colin', 'Lucas', 'Picard', 'Renaud', 'Caron', 'Aubert', 'Meyer', 'Leclerc', 'Dumas', 'Noël', 'Marchand', 'Gaillard', 'Boyer', 'Robin', 'Laurent', 'Lemoine', 'Fontaine', 'Rolland', 'Guérin', 'Jacob', 'Marie'];
+    let h = 0, f = 0, n = 0;
+    const personne = (g: 'H' | 'F'): string => `${g === 'H' ? hommes[h++]! : femmes[f++]!} ${noms[n++]!}`;
+    const duos: DuoFictif[] = [];
+    for (let i = 0; i < 10; i++) for (const [g1, g2] of [['H', 'H'], ['F', 'F'], ['H', 'F']] as const) duos.push({ name1: personne(g1), name2: personne(g2), gender1: g1, gender2: g2 });
+    return duos;
+  }
 }
 
 // Témoin de sauvegarde, partagé par l’Hyrox et le WOD : la pastille de l’en-tête dit si la copie

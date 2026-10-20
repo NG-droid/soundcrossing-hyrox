@@ -496,19 +496,26 @@ test('Open et Pro dans un même événement : import, classements, podium et CSV
   assert.equal(P.groupLabel('Pro', 'Duo HH'), 'Pro · Duo HH');
   assert.throws(() => P.validateEntry(entry({ level: 'RX' })), /Open ou Pro/);
 });
-test('training event: flagged, past departures, a few results, unique title and survives validation', () => {
+test('training event: 30 duos (10 HH, 10 FF, 10 HF), with or without levels, past departures, flagged', () => {
   const now = new Date(2026, 9, 20, 15, 7);
-  const { race: r, entries } = P.trainingEvent([], now);
+  const duos = Array.from({ length: 30 }, (_, i) => ({ name1: `A${i}`, name2: `B${i}`, gender1: ['H', 'F', 'H'][i % 3], gender2: ['H', 'F', 'F'][i % 3] }));
+  const { race: r, entries } = P.trainingEvent([], duos, true, now);
   assert.equal(r.training, true);
+  assert.equal(r.format, 'DUO');
   assert.equal(r.date, '2026-10-20');
   assert.deepEqual(Array.from(r.levels), ['Open', 'Pro']);
-  assert.equal(entries.length, 12);
+  assert.equal(entries.length, 30);
+  for (const c of ['HH', 'FF', 'HF']) assert.equal(entries.filter(e => e.category === c).length, 10);
+  assert.equal(entries.filter(e => e.level === 'Pro').length, 15);
   assert.equal(entries[0].scheduled, '13:05');
+  assert.equal(entries[29].scheduled, '13:50');
   assert.ok(entries.every(e => P.plannedAt(r, e) < now.getTime()));
   assert.equal(entries.filter(e => e.status === 'finished').length, 3);
   const s = P.validateSession({ title: 'Test', date: r.date, races: [r], entries });
   assert.equal(s.races[0].training, true);
-  assert.equal(P.validateRace({ ...r, training: undefined }).training, undefined);
-  assert.equal(P.trainingEvent([r], now).race.title, 'Entraînement 2 — Soundcrossing');
-  assert.equal(P.trainingEvent([], new Date(2026, 9, 20, 1, 30)).race.date, '2026-10-19');
+  const plain = P.trainingEvent([r], duos, false, now);
+  assert.equal(plain.race.levels.length, 0);
+  assert.ok(plain.entries.every(e => e.level === ''));
+  assert.equal(plain.race.title, 'Entraînement 2 — Soundcrossing');
+  assert.equal(P.trainingEvent([], duos, false, new Date(2026, 9, 20, 1, 30)).race.date, '2026-10-19');
 });

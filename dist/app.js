@@ -1145,8 +1145,15 @@ var PaceApp;
         }
     }
     // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
-    function createTraining() {
-        const { race, entries } = Pace.trainingEvent(state.session.races);
+    function openTraining() {
+        $('settings-dialog').close();
+        $('training-form').reset();
+        $('training-dialog').showModal();
+    }
+    function createTraining(event) {
+        event.preventDefault();
+        const withLevels = new FormData(event.target).get('levels') === 'pro';
+        const { race, entries } = Pace.trainingEvent(state.session.races, Saisie.duosFictifs(), withLevels);
         if (commit(`création de l’entraînement ${race.title}`, session => { session.races.push(race); session.entries.push(...entries); })) {
             selectedRaceId = race.id;
             focusId = '';
@@ -1155,9 +1162,9 @@ var PaceApp;
             view = 'scores';
             $('search').value = '';
             rememberEvent();
-            $('settings-dialog').close();
+            $('training-dialog').close();
             render();
-            toast(`Entraînement créé : ${entries.length} inscriptions fictives. Saisissez les arrivées dans « Scores ».`);
+            toast(`Entraînement créé : ${entries.length} duos fictifs. Saisissez les arrivées dans « Scores ».`);
         }
     }
     function deleteTrainings(ids) {
@@ -1373,8 +1380,9 @@ var PaceApp;
     $('new-session-button').addEventListener('click', () => { $('settings-dialog').close(); $('reset-dialog').showModal(); $('reset-save').focus(); });
     $('reset-save').addEventListener('click', () => { exportBackup(); resetAll(); });
     $('reset-now').addEventListener('click', resetAll);
-    $('demo-button').addEventListener('click', createTraining);
-    $('training-create').addEventListener('click', createTraining);
+    $('demo-button').addEventListener('click', openTraining);
+    $('training-create').addEventListener('click', openTraining);
+    $('training-form').addEventListener('submit', event => createTraining(event));
     $('training-delete').addEventListener('click', () => deleteTrainings([selectedRaceId]));
     $('training-delete-all').addEventListener('click', () => deleteTrainings(state.session.races.map(r => r.id)));
     $('undo-button').addEventListener('click', undo);

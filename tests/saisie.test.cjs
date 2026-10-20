@@ -44,3 +44,10 @@ test('WOD court (cap < 1 h) : case mm:ss', () => {
   assert.throws(() => S.duration('12:75', true), /entre 00 et 59/);
   assert.throws(() => S.duration('12:3', true), /mm:ss/);
 });
+test('fake training duos: 30 duos, 10 HH, 10 FF, 10 HF, all names different', () => {
+  const duos = S.duosFictifs();
+  assert.equal(duos.length, 30);
+  const cat = d => d.gender1 === d.gender2 ? d.gender1 + d.gender2 : 'HF';
+  for (const c of ['HH', 'FF', 'HF']) assert.equal(duos.filter(d => cat(d) === c).length, 10);
+  assert.equal(new Set(duos.flatMap(d => [d.name1, d.name2])).size, 60);
+});

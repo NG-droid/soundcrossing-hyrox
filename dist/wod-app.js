@@ -1025,8 +1025,15 @@ var Wod;
         XLSX.writeFile(book, `${state.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'wod'} - résultats.xlsx`);
     }
     // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
-    function loadTraining() {
-        const example = Wod.training(today(), store.events);
+    function openTraining() {
+        $('settings-dialog').close();
+        $('training-form').reset();
+        $('training-dialog').showModal();
+    }
+    function loadTraining(event) {
+        event.preventDefault();
+        const data = new FormData(event.target);
+        const example = Wod.training(today(), store.events, Saisie.duosFictifs(), data.get('levels') === 'rx', data.get('method') === 'points' ? 'points' : 'places');
         example.id = `entrainement-${uid()}`;
         store.events.push(example);
         selectEvent(example.id);
@@ -1035,8 +1042,8 @@ var Wod;
             return;
         view = 'scores';
         render();
-        $('settings-dialog').close();
-        toast(`Entraînement créé : ${example.athletes.length} inscrits fictifs et ${example.workouts.length} WOD. Saisissez les scores.`);
+        $('training-dialog').close();
+        toast(`Entraînement créé : ${example.athletes.length} duos fictifs et ${example.workouts.length} WOD. Saisissez les scores.`);
     }
     function deleteTrainings(ids) {
         const events = store.events.filter(e => e.training && ids.includes(e.id));
@@ -1262,7 +1269,8 @@ var Wod;
         $('undo-button').addEventListener('click', undo);
         $('no-event-undo').addEventListener('click', undo);
         $('demo-settings').addEventListener('click', loadDemo);
-        $('training-create').addEventListener('click', loadTraining);
+        $('training-create').addEventListener('click', openTraining);
+        $('training-form').addEventListener('submit', loadTraining);
         $('training-delete').addEventListener('click', () => deleteTrainings([state.id]));
         $('training-delete-all').addEventListener('click', () => deleteTrainings(store.events.map(e => e.id)));
         $('reset-button').addEventListener('click', () => {

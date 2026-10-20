@@ -101,6 +101,19 @@ var Saisie;
         });
     }
     Saisie.install = install;
+    function duosFictifs() {
+        const hommes = ['Alex', 'Hugo', 'Tom', 'Lucas', 'Jules', 'Paul', 'Max', 'Théo', 'Louis', 'Nathan', 'Léo', 'Gabriel', 'Arthur', 'Raphaël', 'Ethan', 'Noah', 'Adam', 'Victor', 'Sacha', 'Mathis', 'Enzo', 'Baptiste', 'Simon', 'Antoine', 'Clément', 'Quentin', 'Romain', 'Julien', 'Bastien', 'Yanis'];
+        const femmes = ['Emma', 'Léa', 'Zoé', 'Manon', 'Nina', 'Inès', 'Chloé', 'Sarah', 'Camille', 'Jade', 'Louise', 'Alice', 'Lina', 'Rose', 'Anna', 'Julia', 'Lola', 'Clara', 'Eva', 'Juliette', 'Margot', 'Lou', 'Agathe', 'Romane', 'Mila', 'Elsa', 'Lucie', 'Pauline', 'Laura', 'Marie'];
+        const noms = ['Martin', 'Durand', 'Robert', 'Petit', 'Leroy', 'Moreau', 'Simon', 'Garcia', 'Bernard', 'Roux', 'Faure', 'Morel', 'Girard', 'Fabre', 'Vidal', 'Lambert', 'Roche', 'Blanc', 'Denis', 'Fournier', 'Mercier', 'Dupont', 'Bonnet', 'François', 'Legrand', 'Garnier', 'Chevalier', 'Rousseau', 'Perrin', 'Clément', 'Gauthier', 'Masson', 'Henry', 'Muller', 'Lefèvre', 'Barbier', 'Arnaud', 'Giraud', 'Brun', 'Colin', 'Lucas', 'Picard', 'Renaud', 'Caron', 'Aubert', 'Meyer', 'Leclerc', 'Dumas', 'Noël', 'Marchand', 'Gaillard', 'Boyer', 'Robin', 'Laurent', 'Lemoine', 'Fontaine', 'Rolland', 'Guérin', 'Jacob', 'Marie'];
+        let h = 0, f = 0, n = 0;
+        const personne = (g) => `${g === 'H' ? hommes[h++] : femmes[f++]} ${noms[n++]}`;
+        const duos = [];
+        for (let i = 0; i < 10; i++)
+            for (const [g1, g2] of [['H', 'H'], ['F', 'F'], ['H', 'F']])
+                duos.push({ name1: personne(g1), name2: personne(g2), gender1: g1, gender2: g2 });
+        return duos;
+    }
+    Saisie.duosFictifs = duosFictifs;
 })(Saisie || (Saisie = {}));
 // Témoin de sauvegarde, partagé par l’Hyrox et le WOD : la pastille de l’en-tête dit si la copie
 // sur l’ordinateur (dossier Documents/Soundcrossing, écrit par server.py) est à jour.
