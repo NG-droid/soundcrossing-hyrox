@@ -230,3 +230,14 @@ test('search by name ignores accents and case, and finds either partner of a duo
   assert.equal(W.matchesSearch(duo, 'elodie'), false);
   assert.equal(W.matchesSearch(duo, ''), true);
 });
+
+test('undo history is kept with the data, capped at 15 steps, and a damaged step never blocks loading', () => {
+  const c = { ...W.emptyCompetition('c', 'Test', '2026-10-20', 'MIXED'), athletes: [athlete('a')] };
+  const before = { ...W.emptyCompetition('c', 'Test', '2026-10-20', 'MIXED') };
+  const history = [...Array.from({ length: 20 }, (_, i) => ({ label: `étape ${i}`, selectedId: 'c', events: [before] })), { label: 'abîmée', events: 'x' }];
+  const store = W.validateStore({ version: 2, events: [c], selectedId: 'c', history });
+  assert.equal(store.history.length, 14);
+  assert.equal(store.history.at(-1).label, 'étape 19');
+  assert.equal(store.history[0].events[0].athletes.length, 0);
+  assert.equal(W.validateStore({ version: 2, events: [c], selectedId: 'c' }).history.length, 0);
+});

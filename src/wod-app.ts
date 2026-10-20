@@ -57,7 +57,9 @@ namespace Wod {
     selectEvent(state.id || store.selectedId);
   }
   // Enregistre store ; en cas d’échec, l’écran revient au dernier état enregistré. recovery : restauration volontaire.
-  function save(recovery = false): boolean {
+  // label : nom de la modification, gardée dans l’historique pour « Annuler » (état d’avant = dernier état enregistré).
+  // undoing : l’historique de store est déjà celui voulu (dernière étape retirée).
+  function save(recovery = false, label = '', undoing = false): boolean {
     try {
       if (storageBlocked && !recovery) throw Error('Stockage illisible : restaurez une sauvegarde avant de modifier.');
       const latest = localStorage.getItem(KEY);
@@ -65,15 +67,26 @@ namespace Wod {
         if (latest) { loadedRaw = latest; adopt(latest); }
         throw Error('Les données WOD ont changé dans une autre fenêtre. Vérifiez puis recommencez.');
       }
-      const candidate = validateStore({ ...store, selectedId: state.id, revision: uid(), savedAt: Date.now() });
-      const encoded = JSON.stringify(candidate);
+      const before = JSON.parse(committed) as Store;
+      let history = recovery || undoing ? store.history ?? [] : [...before.history ?? []];
+      if (label && !recovery && !undoing) history = [...history, { label, selectedId: before.selectedId, events: before.events }].slice(-MAX_HISTORY);
+      const candidate = validateStore({ ...store, selectedId: state.id, revision: uid(), savedAt: Date.now(), history });
       if (latest) {
-        let readable = true;
-        try { validateStore(JSON.parse(latest)); } catch { readable = false; }
-        localStorage.setItem(readable ? BACKUP : `${KEY}.damaged`, latest);
+        // Copie de secours sans historique, pour ne pas doubler la place prise dans le navigateur.
+        let backup: string | null = null;
+        try { backup = JSON.stringify({ ...validateStore(JSON.parse(latest)), history: [] }); } catch { /* Illisible : gardée à part. */ }
+        localStorage.setItem(backup === null ? `${KEY}.damaged` : BACKUP, backup ?? latest);
       }
-      localStorage.setItem(KEY, encoded);
-      loadedRaw = encoded; storageBlocked = false; adopt(encoded); savedStatus(); saveToDisk(encoded);
+      let encoded = JSON.stringify(candidate);
+      // Navigateur plein : on oublie les plus anciennes étapes d’annulation plutôt que de refuser l’enregistrement.
+      for (;;) {
+        try { localStorage.setItem(KEY, encoded); break; }
+        catch (error) {
+          if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError' || !candidate.history?.length) throw error;
+          candidate.history.shift(); encoded = JSON.stringify(candidate);
+        }
+      }
+      loadedRaw = encoded; storageBlocked = false; adopt(encoded); savedStatus(); syncUndo(); saveToDisk(encoded);
       return true;
     } catch (error) {
       try { adopt(committed); } catch { /* L’état précédent était déjà validé. */ }
@@ -142,6 +155,23 @@ namespace Wod {
   function draftChanged(form: HTMLFormElement, kind: 'athlete' | 'workout' | 'event', id: string): boolean { return drafts.get(form) !== draftVersion(kind, id); }
   const STALE_FORM = 'Les données de ce formulaire ont changé dans une autre fenêtre. Fermez-le puis rouvrez-le pour utiliser la version à jour.';
   function savedStatus(error = false): void { Temoin.navigateur(!error); }
+  // « Annuler » comme dans l’Hyrox : revient à l’état d’avant la dernière modification (inscription, WOD, score, forfait…).
+  function syncUndo(): void {
+    const last = store.history?.at(-1);
+    for (const id of ['undo-button', 'no-event-undo']) {
+      const b = $<HTMLButtonElement>(id); b.disabled = !last;
+      b.title = last ? `Annuler : ${last.label}` : 'Aucune modification à annuler';
+    }
+    $('no-event-undo').hidden = !last;
+  }
+  function undo(): void {
+    const last = store.history?.at(-1); if (!last) return;
+    const where = last.events.find(e => e.id === last.selectedId)?.title;
+    if (!confirm(`Annuler la dernière modification ?\n\nRevenir avant : ${last.label}${where ? ` (${where})` : ''}. Les inscriptions, WOD et scores précédents seront rétablis.`)) return;
+    store.history = store.history!.slice(0, -1); store.events = last.events;
+    selectEvent(last.selectedId); rememberEvent();
+    if (save(false, '', true)) { render(); toast('Dernière modification annulée.'); }
+  }
   let toastTimer = 0;
   function toast(text: string): void {
     const el = $('toast'); el.textContent = text; el.hidden = false;
@@ -153,7 +183,7 @@ namespace Wod {
   }
 
   function render(): void {
-    const hasEvent = store.events.length > 0;
+    const hasEvent = store.events.length > 0; syncUndo();
     $('no-event').hidden = hasEvent; $('event-content').hidden = !hasEvent;
     $('edit-competition').hidden = !hasEvent; $('event-format-badge').hidden = !hasEvent;
     $('new-event-button').textContent = hasEvent ? '+ Nouvel événement' : '+ Créer un événement';
@@ -169,7 +199,7 @@ namespace Wod {
     $('chips').innerHTML = ''; $('chips2').innerHTML = ''; $('chips3').innerHTML = ''; $('view-actions').innerHTML = '';
     (document.querySelector('.wod-table') as HTMLElement).classList.toggle('wod-ranking', view === 'ranking');
     (document.querySelector('.wod-table') as HTMLElement).dataset.view = view;
-    $('podium-footer').hidden = true; $('search-bar').hidden = view === 'workouts';
+    $('podium-footer').hidden = true; $('search-label').hidden = view === 'workouts';
     ({ athletes: renderAthletes, workouts: renderWorkouts, scores: renderScores, ranking: renderRanking })[view]();
   }
   // Recherche par nom, comme dans l’Hyrox : filtre Participants, Scores et Classements (les rangs ne changent pas).
@@ -204,7 +234,7 @@ namespace Wod {
       if (!result.athletes.length) { toast(result.duplicates ? 'Tous ces participants sont déjà inscrits.' : 'Aucun participant trouvé dans le fichier.'); return; }
       const doublons = result.duplicates ? `\n${result.duplicates} déjà inscrit(s) seront ignorés.` : '';
       if (!confirm(`Ajouter ${result.athletes.length} inscription(s) à « ${state.title} » ?${doublons}`)) return;
-      state.athletes.push(...result.athletes); if (!save()) return; render(); toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
+      state.athletes.push(...result.athletes); if (!save(false, `import de ${result.athletes.length} inscription(s)`)) return; render(); toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
     } catch (error) { toast(error instanceof Error ? error.message : 'Impossible de lire ce fichier.'); }
   }
   function renderAthletes(): void {
@@ -365,7 +395,7 @@ namespace Wod {
       if (!confirm(`Confirmer le forfait de ${athleteLabel(a)} sur ${w.name} ?\n\n${had ? `Le score enregistré (${scoreText(w, scores[a.id])}) sera retiré. ` : ''}${state.method === 'places' ? 'Sur ce WOD : dernière place de la catégorie.' : 'Sur ce WOD : 0 point.'}`)) return;
       scores[a.id] = { forfeit: true };
     } else delete scores[a.id];
-    if (save()) { render(); toast(forfeit ? 'Forfait enregistré.' : 'Forfait annulé : score à saisir.'); }
+    if (save(false, `${forfeit ? 'forfait' : 'forfait annulé'} de ${athleteLabel(a)} sur ${w.name}`)) { render(); toast(forfeit ? 'Forfait enregistré.' : 'Forfait annulé : score à saisir.'); }
   }
   function saveScore(input: HTMLInputElement): void {
     const w = currentWod(); const athleteId = input.dataset.score ?? '';
@@ -378,7 +408,8 @@ namespace Wod {
       row.querySelectorAll('input').forEach(i => i.classList.remove('invalid'));
       const scores = state.scores[w.id] ??= {};
       if (score) scores[athleteId] = score; else delete scores[athleteId];
-      if (!save()) return;
+      const who = state.athletes.find(x => x.id === athleteId);
+      if (!save(false, `score de ${who ? athleteLabel(who) : 'participant'} sur ${w.name}`)) return;
       if (w.type === 'time') { const f = row.querySelector<HTMLInputElement>('[data-field="time"]'); if (f) f.value = Saisie.fromMs(score?.timeMs, shortTime(w)); }
       const a = state.athletes.find(x => x.id === athleteId);
       if (a) $(`saved-${athleteId}`).innerHTML = savedText(w, a);
@@ -478,7 +509,7 @@ namespace Wod {
     const n = Number(text.trim());
     if (!Number.isInteger(n) || n < 0) { toast('Nombre entier attendu.'); return; }
     state.finalists = qualifyTop(state, cat, n);
-    if (save()) { render(); toast(`${state.athletes.filter(a => group(a) === cat && isFinalist(state, a)).length} qualifié(s) en ${cat}.`); }
+    if (save(false, `qualification pour la Finale en ${cat}`)) { render(); toast(`${state.athletes.filter(a => group(a) === cat && isFinalist(state, a)).length} qualifié(s) en ${cat}.`); }
   }
   function setFinalist(id: string, on: boolean): void {
     const a = state.athletes.find(x => x.id === id); if (!a) return;
@@ -486,7 +517,7 @@ namespace Wod {
     if (!on && has && !confirm(`${athleteLabel(a)} a déjà des scores en Finale. Le retirer quand même ? Ses scores de finale seront gardés mais ne compteront plus.`)) return;
     const list = (state.finalists ?? []).filter(x => x !== id);
     state.finalists = on ? [...list, id] : list;
-    if (save()) render();
+    if (save(false, `${on ? 'qualification' : 'retrait de la Finale'} de ${athleteLabel(a)}`)) render();
   }
 
   let entryFormat: Athlete['format'] | '' = '';
@@ -539,14 +570,14 @@ namespace Wod {
     if (old && scored && group(old) !== group(athlete) && !confirm(`${athleteLabel(old)} a déjà des scores.\n\nIl passera de « ${group(old)} » à « ${group(athlete)} », avec ses scores. Continuer ?`)) return;
     const i = state.athletes.findIndex(a => a.id === athlete.id);
     if (i >= 0) state.athletes[i] = athlete; else state.athletes.push(athlete);
-    if (!save()) { $('entry-error').textContent = 'Non enregistré : réessayez.'; return; }
+    if (!save(false, `${i >= 0 ? 'modification' : 'ajout'} de ${athleteLabel(athlete)}`)) { $('entry-error').textContent = 'Non enregistré : réessayez.'; return; }
     $<HTMLDialogElement>('entry-dialog').close(); render(); toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
   }
   function deleteAthlete(a: Athlete | undefined): boolean {
     if (!a || !confirm(`Supprimer ${athleteLabel(a)} et ses scores ?`)) return false;
     state.athletes = state.athletes.filter(x => x !== a);
     for (const s of Object.values(state.scores)) delete s[a.id];
-    if (!save()) return false;
+    if (!save(false, `suppression de ${athleteLabel(a)}`)) return false;
     render(); return true;
   }
 
@@ -591,7 +622,7 @@ namespace Wod {
     if (old && old.type !== type) delete state.scores[id];
     const i = state.workouts.findIndex(w => w.id === id);
     if (i >= 0) state.workouts[i] = workout; else state.workouts.push(workout);
-    if (!save()) { $('workout-error').textContent = 'Non enregistré : réessayez.'; return; }
+    if (!save(false, `${i >= 0 ? 'modification' : 'ajout'} du WOD ${workout.name}`)) { $('workout-error').textContent = 'Non enregistré : réessayez.'; return; }
     $<HTMLDialogElement>('workout-dialog').close(); render(); toast(i >= 0 ? 'WOD modifié.' : 'WOD ajouté.');
   }
 
@@ -652,13 +683,14 @@ namespace Wod {
       target.levels = [...levels];
     }
     if (!existing) { store.events.push(target); view = 'athletes'; }
-    selectEvent(target.id); rememberEvent(); if (!save()) { $('session-error').textContent = 'Non enregistré : réessayez.'; return; }
+    selectEvent(target.id); rememberEvent(); if (!save(false, `${existing ? 'modification' : 'création'} de l’événement ${target.title}`)) { $('session-error').textContent = 'Non enregistré : réessayez.'; return; }
     $<HTMLDialogElement>('session-dialog').close(); render(); toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
   }
   function deleteEvent(): void {
     if (!confirm(`Supprimer l’événement « ${state.title} », ses inscriptions, ses WOD et ses scores ?`)) return;
+    const title = state.title;
     store.events = store.events.filter(e => e.id !== state.id);
-    selectEvent(''); if (!save()) return;
+    selectEvent(''); if (!save(false, `suppression de l’événement ${title}`)) return;
     $<HTMLDialogElement>('session-dialog').close(); render(); toast('Événement supprimé.');
   }
 
@@ -672,7 +704,7 @@ namespace Wod {
   function loadDemo(): void {
     const example = demo(today());
     example.id = `exemple-${uid()}`;
-    store.events.push(example); selectEvent(example.id); rememberEvent(); if (!save()) return;
+    store.events.push(example); selectEvent(example.id); rememberEvent(); if (!save(false, 'ajout de l’exemple')) return;
     view = 'ranking'; rankingTab = 'general'; render();
     $<HTMLDialogElement>('settings-dialog').close(); toast('Exemple chargé : 10 inscrits et 3 WOD. Regardez chaque onglet.');
   }
@@ -695,7 +727,7 @@ namespace Wod {
       else if (d.entryFormat) { entryFormat = d.entryFormat as Athlete['format']; $('entry-error').textContent = ''; syncEntryForm(); }
       else if (d.gender && d.person) { if (d.person === '1') gender1 = d.gender as 'H' | 'F'; else gender2 = d.gender as 'H' | 'F'; $('entry-error').textContent = ''; syncEntryForm(); } else if (d.deleteWorkout) {
         const w = state.workouts.find(x => x.id === d.deleteWorkout);
-        if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; if (save()) render(); }
+        if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) { state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; if (save(false, `suppression du WOD ${w.name}`)) render(); }
       } else if (d.wod) { selectedWod = d.wod; render(); }
       else if (d.action === 'podium') openPodium();
       else if (d.action === 'print-sheets') printSheets(false);
@@ -766,17 +798,18 @@ namespace Wod {
     });
     $<HTMLInputElement>('import-file').addEventListener('change', e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; input.value = ''; if (file) void importFile(file); });
     $('no-event-demo').addEventListener('click', loadDemo);
+    $('undo-button').addEventListener('click', undo); $('no-event-undo').addEventListener('click', undo);
     $('demo-settings').addEventListener('click', loadDemo);
     $('reset-button').addEventListener('click', () => {
       if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?\n\nUne sauvegarde des données actuelles sera téléchargée avant.')) return;
       if (store.events.length) exportBackup();
-      store = emptyStore(); selectEvent(''); if (!save()) return;
+      store = emptyStore(); selectEvent(''); if (!save(false, 'remise à zéro')) return;
       view = 'athletes'; render(); $<HTMLDialogElement>('settings-dialog').close();
     });
   }
 
   function rememberEvent(): void { try { localStorage.setItem(EVENT_KEY, state.id); } catch { /* Vue facultative. */ } }
-  function exportBackup(): void { download(`sauvegarde-wod-${today()}.json`, JSON.stringify({ ...store, selectedId: state.id }, null, 2), 'application/json'); }
+  function exportBackup(): void { download(`sauvegarde-wod-${today()}.json`, JSON.stringify({ ...store, selectedId: state.id, history: [] }, null, 2), 'application/json'); }
 
   document.addEventListener('DOMContentLoaded', () => {
     load(); bind(); render(); savedStatus(storageBlocked); void syncDisk(); Temoin.surveiller(() => { void syncDisk(); });
