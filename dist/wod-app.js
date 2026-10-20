@@ -1123,20 +1123,6 @@ var Wod;
         render();
         toast(one ? 'Entraînement supprimé.' : 'Entraînements supprimés.');
     }
-    function loadDemo() {
-        const example = Wod.demo(today());
-        example.id = `exemple-${uid()}`;
-        store.events.push(example);
-        selectEvent(example.id);
-        rememberEvent();
-        if (!save(false, 'ajout de l’exemple'))
-            return;
-        view = 'ranking';
-        rankingTab = 'general';
-        render();
-        $('settings-dialog').close();
-        toast('Exemple chargé : 10 inscrits et 3 WOD. Regardez chaque onglet.');
-    }
     function bind() {
         Saisie.install();
         document.addEventListener('click', e => {
@@ -1338,10 +1324,9 @@ var Wod;
         });
         $('import-file').addEventListener('change', e => { const input = e.target, file = input.files?.[0]; input.value = ''; if (file)
             void importFile(file); });
-        $('no-event-demo').addEventListener('click', loadDemo);
+        $('no-event-demo').addEventListener('click', openTraining);
         $('undo-button').addEventListener('click', undo);
         $('no-event-undo').addEventListener('click', undo);
-        $('demo-settings').addEventListener('click', loadDemo);
         $('training-create').addEventListener('click', openTraining);
         $('training-form').addEventListener('submit', loadTraining);
         $('training-form').addEventListener('input', trainingSummary);
