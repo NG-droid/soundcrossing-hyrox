@@ -496,3 +496,19 @@ test('Open et Pro dans un même événement : import, classements, podium et CSV
   assert.equal(P.groupLabel('Pro', 'Duo HH'), 'Pro · Duo HH');
   assert.throws(() => P.validateEntry(entry({ level: 'RX' })), /Open ou Pro/);
 });
+test('training event: flagged, past departures, a few results, unique title and survives validation', () => {
+  const now = new Date(2026, 9, 20, 15, 7);
+  const { race: r, entries } = P.trainingEvent([], now);
+  assert.equal(r.training, true);
+  assert.equal(r.date, '2026-10-20');
+  assert.deepEqual(Array.from(r.levels), ['Open', 'Pro']);
+  assert.equal(entries.length, 12);
+  assert.equal(entries[0].scheduled, '13:05');
+  assert.ok(entries.every(e => P.plannedAt(r, e) < now.getTime()));
+  assert.equal(entries.filter(e => e.status === 'finished').length, 3);
+  const s = P.validateSession({ title: 'Test', date: r.date, races: [r], entries });
+  assert.equal(s.races[0].training, true);
+  assert.equal(P.validateRace({ ...r, training: undefined }).training, undefined);
+  assert.equal(P.trainingEvent([r], now).race.title, 'Entraînement 2 — Soundcrossing');
+  assert.equal(P.trainingEvent([], new Date(2026, 9, 20, 1, 30)).race.date, '2026-10-19');
+});

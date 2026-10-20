@@ -230,6 +230,17 @@ test('search by name ignores accents and case, and finds either partner of a duo
   assert.equal(W.matchesSearch(duo, 'elodie'), false);
   assert.equal(W.matchesSearch(duo, ''), true);
 });
+test('training event has the demo athletes and WODs but no scores, and keeps its flag', () => {
+  const t = W.training('2026-10-20', []);
+  assert.equal(t.training, true);
+  assert.equal(t.athletes.length, 10);
+  assert.equal(t.workouts.length, 3);
+  assert.equal(Object.keys(t.scores).length, 0);
+  assert.equal(W.validate(t).training, true);
+  assert.equal(W.validate({ ...t, training: undefined }).training, undefined);
+  assert.equal(W.training('2026-10-20', [t]).title, 'Entraînement 2 — Soundcrossing WOD');
+  assert.equal(W.demo('2026-10-20').training, true);
+});
 
 test('undo history is kept with the data, capped at 15 steps, and a damaged step never blocks loading', () => {
   const c = { ...W.emptyCompetition('c', 'Test', '2026-10-20', 'MIXED'), athletes: [athlete('a')] };

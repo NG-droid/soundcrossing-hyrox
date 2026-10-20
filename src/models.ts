@@ -17,6 +17,8 @@ namespace Pace {
     // Niveaux Hyrox : [] (un seul classement) ou ['Pro', 'Open'] (classements séparés).
     levels: string[];
     previousTitles: string[];
+    // Événement d’entraînement : participants fictifs, pour s’exercer sans toucher aux vrais événements.
+    training?: true;
   }
   export interface Entry {
     id: string; bib: string; name1: string; name2: string;
