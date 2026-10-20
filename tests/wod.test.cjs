@@ -14,6 +14,10 @@ test('for time ranks finishers by time, then capped athletes by reps, and keeps 
     scores: { w: { a: { reps: 70 }, b: { timeMs: 300000 }, c: { reps: 80 }, d: { timeMs: 250000 }, e: { timeMs: 300000 } } } };
   assert.deepEqual(ids(W.workoutRanking(c, w, 'Solo H')), ['d:1', 'b:2', 'e:2', 'c:4', 'a:5']);
   assert.equal(W.scoreText(w, { reps: 70 }), 'CAP + 70 reps');
+  assert.equal(W.scoreText(w, { timeMs: 480000 }), '8 min 00 s');
+  assert.equal(W.scoreText(w, { timeMs: 150000 }), '2 min 30 s');
+  assert.equal(W.duree(45000), '45 s');
+  assert.equal(W.duree(3930000), '1 h 05 min 30 s');
 });
 
 test('amrap, load and reps rank the biggest number first', () => {
@@ -182,7 +186,7 @@ test('one business rule for scores: zero time, time over the cap, time with reps
   assert.throws(() => W.buildScore(w, { timeMs: 0 }), /nul/);
   const c = { ...W.emptyCompetition('c', 'Test', '', 'MIXED'), athletes: [athlete('a'), athlete('b')], workouts: [w], scores: { w: { a: { timeMs: 540000 }, b: { reps: 50 } } } };
   // Réduire le cap de 10 à 5 min : le temps de 9 min ne peut plus rester « terminé ».
-  assert.deepEqual(Array.from(W.workoutConflicts(c, { ...w, capMinutes: 5 })), ['a : temps 09:00 au-delà du time cap de 5 min']);
+  assert.deepEqual(Array.from(W.workoutConflicts(c, { ...w, capMinutes: 5 })), ['a : temps 9 min 00 s au-delà du time cap de 5 min']);
   assert.deepEqual(Array.from(W.workoutConflicts(c, w)), []);
 });
 
