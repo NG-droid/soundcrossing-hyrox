@@ -1028,12 +1028,18 @@ var Wod;
     function openTraining() {
         $('settings-dialog').close();
         $('training-form').reset();
+        trainingSummary();
         $('training-dialog').showModal();
     }
+    function trainingChoice() {
+        const data = new FormData($('training-form')), format = (String(data.get('format')) || 'DUO');
+        return { format, people: Saisie.inscriptionsFictives(format, Number(data.get('count'))), data };
+    }
+    function trainingSummary() { $('training-summary').textContent = `Sera créé : ${Saisie.resumeFictifs(trainingChoice().people)}.`; }
     function loadTraining(event) {
         event.preventDefault();
-        const data = new FormData(event.target);
-        const example = Wod.training(today(), store.events, Saisie.duosFictifs(), data.get('levels') === 'rx', data.get('method') === 'points' ? 'points' : 'places');
+        const { format, people, data } = trainingChoice();
+        const example = Wod.training(today(), store.events, people, format, data.get('levels') === 'rx', data.get('method') === 'points' ? 'points' : 'places');
         example.id = `entrainement-${uid()}`;
         store.events.push(example);
         selectEvent(example.id);
@@ -1043,7 +1049,7 @@ var Wod;
         view = 'scores';
         render();
         $('training-dialog').close();
-        toast(`Entraînement créé : ${example.athletes.length} duos fictifs et ${example.workouts.length} WOD. Saisissez les scores.`);
+        toast(`Entraînement créé : ${example.athletes.length} inscriptions fictives et ${example.workouts.length} WOD. Saisissez les scores.`);
     }
     function deleteTrainings(ids) {
         const events = store.events.filter(e => e.training && ids.includes(e.id));
@@ -1271,6 +1277,7 @@ var Wod;
         $('demo-settings').addEventListener('click', loadDemo);
         $('training-create').addEventListener('click', openTraining);
         $('training-form').addEventListener('submit', loadTraining);
+        $('training-form').addEventListener('input', trainingSummary);
         $('training-delete').addEventListener('click', () => deleteTrainings([state.id]));
         $('training-delete-all').addEventListener('click', () => deleteTrainings(store.events.map(e => e.id)));
         $('reset-button').addEventListener('click', () => {

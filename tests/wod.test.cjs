@@ -230,22 +230,21 @@ test('search by name ignores accents and case, and finds either partner of a duo
   assert.equal(W.matchesSearch(duo, 'elodie'), false);
   assert.equal(W.matchesSearch(duo, ''), true);
 });
-test('training event: 30 duos, chosen levels and ranking method, no scores, keeps its flag', () => {
-  const duos = Array.from({ length: 30 }, (_, i) => ({ name1: `A${i}`, name2: `B${i}`, gender1: ['H', 'F', 'H'][i % 3], gender2: ['H', 'F', 'F'][i % 3] }));
-  const t = W.training('2026-10-20', [], duos, true, 'points');
+test('training event: chosen format, size, levels and ranking method, no scores, keeps its flag', () => {
+  const people = Array.from({ length: 30 }, (_, i) => i % 2 ? { name1: `S${i}`, name2: '', gender1: 'F', gender2: '' } : { name1: `A${i}`, name2: `B${i}`, gender1: 'H', gender2: 'H' });
+  const t = W.training('2026-10-20', [], people, 'MIXED', true, 'points');
   assert.equal(t.training, true);
-  assert.equal(t.format, 'DUO');
+  assert.equal(t.format, 'MIXED');
   assert.equal(t.method, 'points');
   assert.deepEqual(Array.from(t.levels), ['Scaled', 'RX']);
   assert.equal(t.athletes.length, 30);
-  for (const c of ['HH', 'FF', 'HF']) assert.equal(t.athletes.filter(a => W.category(a) === c).length, 10);
-  assert.equal(t.athletes.filter(a => a.level === 'RX').length, 15);
+  assert.equal(t.athletes.filter(a => a.format === 'SOLO').length, 15);
   assert.equal(t.workouts.length, 3);
   assert.equal(Object.keys(t.scores).length, 0);
   const v = W.validate(t);
   assert.equal(v.training, true);
   assert.equal(v.athletes.length, 30);
-  const plain = W.training('2026-10-20', [t], duos, false, 'places');
+  const plain = W.training('2026-10-20', [t], people, 'MIXED', false, 'places');
   assert.equal(plain.levels.length, 0);
   assert.equal(plain.method, 'places');
   assert.ok(plain.athletes.every(a => a.level === undefined));

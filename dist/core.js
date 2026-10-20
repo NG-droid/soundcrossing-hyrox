@@ -500,21 +500,22 @@ var Pace;
         });
     }
     Pace.importRows = importRows;
-    // Mode entraînement : un événement Duo fictif (avec ou sans Open + Pro) pour s’exercer ou former un bénévole.
-    // Une vague de 3 duos (HH, FF, HF) toutes les 5 minutes, déjà partie (depuis 2 h) pour pouvoir saisir les arrivées tout de suite ;
-    // la première vague a déjà un résultat pour montrer le classement.
-    function trainingEvent(existing, duos, withLevels, now = new Date()) {
-        const early = now.getHours() < 3, day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (early ? 1 : 0), 12), date = localDate(day);
-        const first = early ? 9 * 60 : Math.floor((now.getHours() * 60 + now.getMinutes() - 120) / 5) * 5;
+    // Mode entraînement : un événement fictif (Solo, Duo ou les deux, avec ou sans Open + Pro) pour s’exercer ou former un bénévole.
+    // Départs dès 8 h, une vague de 3 inscriptions toutes les 5 minutes. Si la dernière vague n’est pas encore partie,
+    // l’événement est daté de la veille : toutes les arrivées se saisissent tout de suite. La première vague a déjà son résultat.
+    function trainingEvent(existing, people, format, withLevels, now = new Date()) {
+        const FIRST = 8 * 60, waves = Math.ceil(people.length / 3), last = FIRST + (waves - 1) * 5;
+        const late = now.getHours() * 60 + now.getMinutes() >= last;
+        const date = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (late ? 0 : 1), 12));
         let title = 'Entraînement — Soundcrossing';
         for (let n = 2; existing.some(r => r.date === date && normalize(r.title) === normalize(title)); n++)
             title = `Entraînement ${n} — Soundcrossing`;
-        const race = validateRace({ id: `entrainement-${crypto.randomUUID()}`, title, date, format: 'DUO', levels: withLevels ? Pace.LEVELS : [], training: true });
+        const race = validateRace({ id: `entrainement-${crypto.randomUUID()}`, title, date, format, levels: withLevels ? Pace.LEVELS : [], training: true });
         const results = [3735, 4000, 3425];
-        const entries = duos.map(({ name1, name2, gender1, gender2 }, i) => {
-            const minutes = first + Math.floor(i / 3) * 5, seconds = results[i] ?? 0;
+        const entries = people.map(({ name1, name2, gender1, gender2 }, i) => {
+            const entryFormat = name2 ? 'DUO' : 'SOLO', minutes = FIRST + Math.floor(i / 3) * 5, seconds = results[i] ?? 0;
             const scheduled = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-            const entry = validateEntry({ id: crypto.randomUUID(), bib: '', raceId: race.id, name1, name2, gender1, gender2, format: 'DUO', category: categoryFromGenders('DUO', gender1, gender2), level: withLevels ? Pace.LEVELS[Math.floor(i / 3) % 2] : '', scheduled, status: 'waiting', startedAt: null, arrivedAt: null, durationMs: null });
+            const entry = validateEntry({ id: crypto.randomUUID(), bib: '', raceId: race.id, name1, name2, gender1, gender2, format: entryFormat, category: categoryFromGenders(entryFormat, gender1, gender2), level: withLevels ? Pace.LEVELS[Math.floor(i / 3) % 2] : '', scheduled, status: 'waiting', startedAt: null, arrivedAt: null, durationMs: null });
             const startedAt = plannedAt(race, entry);
             return seconds && startedAt !== null && startedAt + seconds * 1000 < now.getTime() ? validateEntry({ ...entry, startedAt, arrivedAt: startedAt + seconds * 1000, durationMs: seconds * 1000, status: 'finished', resultMode: 'arrival' }) : entry;
         });
