@@ -291,6 +291,10 @@ var PaceApp;
     function actionButton(action, id, text, css = '', title = '') {
         return `<button class="row-action ${css}" data-action="${action}" data-id="${esc(id)}"${title ? ` aria-label="${esc(title)}" title="${esc(title)}"` : ''}>${text}</button>`;
     }
+    // Boutons texte « Modifier » / « Supprimer » : même modèle que l’app WOD.
+    function textButton(action, id, text, css = '', title = '') {
+        return `<button class="button compact${css ? ` ${css}` : ''}" data-action="${action}" data-id="${esc(id)}"${title ? ` aria-label="${esc(title)}" title="${esc(title)}"` : ''}>${text}</button>`;
+    }
     function nameCell(e) {
         const names = `<span>${esc(e.name1)}</span>${e.format === 'DUO' ? `<span class="duo-join">&amp;</span><span>${esc(e.name2)}</span>` : ''}`;
         // Dans l’onglet Scores, tout se fait sur la ligne : le nom n’ouvre pas de fenêtre.
@@ -299,14 +303,12 @@ var PaceApp;
     function arrivalText(e) {
         return e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`;
     }
-    const PEN = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>';
-    const TRASH = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
     function resultCells(e) {
         return `<td class="recorded-time">${arrivalText(e)}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}</div></td>`;
     }
     // Onglet Participants : on gère l’inscription (modifier, supprimer) ; les résultats se saisissent dans Scores.
     function participantCells(e) {
-        return `<td><div class="row-actions">${actionButton('edit', e.id, PEN, 'icon', `Modifier l’inscription de ${label(e)}`)}${actionButton('delete', e.id, TRASH, 'icon', `Supprimer l’inscription de ${label(e)}`)}</div></td>`;
+        return `<td><div class="row-actions">${textButton('edit', e.id, 'Modifier', '', `Modifier l’inscription de ${label(e)}`)}${textButton('delete', e.id, 'Supprimer', 'danger', `Supprimer l’inscription de ${label(e)}`)}</div></td>`;
     }
     // Onglet Scores : l’heure d’arrivée se tape dans la case, le reste se fait avec les boutons de la ligne.
     let unlockedId = '';
@@ -318,10 +320,10 @@ var PaceApp;
         const locked = e.status === 'finished' && unlockedId !== e.id || out;
         const arrival = `<div class="arrival-entry"><input class="score-time" type="time" step="1" data-arrival="${esc(e.id)}" value="${e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt)}" aria-label="Heure d’arrivée de ${esc(label(e))}"${locked ? ' disabled' : ''}></div>`;
         const actions = [
-            e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : '',
-            locked && !out ? actionButton('unlock', e.id, PEN, 'icon', `Modifier le temps de ${label(e)}`) : '',
-            out ? actionButton('reinstate', e.id, 'Remettre en course') : actionButton('withdraw', e.id, 'Forfait'),
-            e.status === 'finished' ? actionButton('clear', e.id, TRASH, 'icon', `Effacer le résultat de ${label(e)}`) : ''
+            e.status === 'finished' ? textButton('photo', e.id, 'Photo finish', 'photo-action') : '',
+            locked && !out ? textButton('unlock', e.id, 'Modifier', '', `Modifier le temps de ${label(e)}`) : '',
+            out ? textButton('reinstate', e.id, 'Remettre en course') : textButton('withdraw', e.id, 'Forfait'),
+            e.status === 'finished' ? textButton('clear', e.id, 'Effacer', 'danger', `Effacer le résultat de ${label(e)}`) : ''
         ].join('');
         return `<td>${arrival}</td><td class="time-cell">${out ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actions}</div></td>`;
     }
