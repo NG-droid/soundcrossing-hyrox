@@ -45,19 +45,20 @@ namespace Saisie {
     if (short) return [Math.floor(s / 60), s % 60].map(pad).join(':');
     return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(pad).join(':');
   }
-  // Même apparence que la case d’arrivée de l’Hyrox (.score-time).
-  export function box(attrs: string, value: string, label: string, short = false): string {
-    return `<input class="time-box score-time" ${attrs}${short ? ' data-short="1"' : ''} value="${value}" placeholder="${short ? 'mm:ss' : 'hh:mm:ss'}" inputmode="numeric" maxlength="${short ? 5 : 8}" autocomplete="off" aria-label="${label}">`;
+  // La case de temps unique de l’app, Hyrox comme WOD : même aspect, même taille, même frappe partout
+  // (arrivée et départ Hyrox, temps total, temps For Time du WOD). blocks = 3 pour hh:mm:ss, 2 pour hh:mm ou mm:ss.
+  export function box(attrs: string, value: string, label: string, blocks: 2 | 3 = 3): string {
+    return `<input class="score-time time-box" ${attrs} data-blocks="${blocks}" value="${value}" placeholder="${blocks === 2 ? '--:--' : '--:--:--'}" inputmode="numeric" maxlength="${blocks === 2 ? 5 : 8}" autocomplete="off" aria-label="${label}">`;
   }
   // Met en forme pendant la frappe, dans toutes les cases .time-box de la page.
   export function install(root: Document | HTMLElement = document): void {
     root.addEventListener('input', event => {
       const input = event.target as HTMLInputElement;
       if (!input.classList?.contains('time-box')) return;
-      const atEnd = input.selectionStart === input.value.length, next = mask(input.value, input.dataset.short ? 2 : 3);
+      const atEnd = input.selectionStart === input.value.length, next = mask(input.value, input.dataset.blocks === '2' ? 2 : 3);
       if (next !== input.value) { input.value = next; if (atEnd) input.setSelectionRange(next.length, next.length); }
       input.classList.remove('invalid');
-    });
+    }, true); // Capture : la case est mise en forme avant que l’app ne lise sa valeur.
   }
   // Mode entraînement (Hyrox et WOD) : inscriptions fictives pour tester facilement.
   // Solo : H et F en alternance. Duo : HH, FF, HF à tour de rôle. Solo + Duo : moitié des personnes en solo, moitié en duo.
