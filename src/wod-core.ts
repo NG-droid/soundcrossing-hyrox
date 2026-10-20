@@ -528,11 +528,12 @@ namespace Wod {
     });
     return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', levels: ['Scaled', 'RX'], athletes, workouts, scores, training: true };
   }
-  // Mode entraînement : mêmes participants et WOD que l’exemple, mais aucun score, pour s’exercer à la saisie.
-  export function training(date: string, existing: Competition[]): Competition {
+  // Mode entraînement : participants fictifs (Solo, Duo ou les deux), les WOD de l’exemple, aucun score, pour s’exercer à la saisie.
+  // Niveaux (Scaled + RX, un groupe de 3 sur deux) et méthode de classement au choix, pour simuler différents événements.
+  export function training(date: string, existing: Competition[], people: { name1: string; name2: string; gender1: 'H' | 'F'; gender2: '' | 'H' | 'F' }[], format: EventFormat, withLevels: boolean, method: Method): Competition {
     let title = 'Entraînement — Soundcrossing WOD';
     for (let n = 2; existing.some(e => e.date === date && e.title === title); n++) title = `Entraînement ${n} — Soundcrossing WOD`;
-    const base = demo(date);
-    return { ...base, id: 'entrainement', title, scores: {}, training: true };
+    const athletes: Athlete[] = people.map((p, i) => ({ id: `a${i}`, bib: '', format: p.name2 ? 'DUO' : 'SOLO', ...p, ...(withLevels ? { level: Math.floor(i / 3) % 2 ? 'RX' : 'Scaled' } : {}) }));
+    return { ...demo(date), id: 'entrainement', title, format, method, levels: withLevels ? ['Scaled', 'RX'] : [], athletes, scores: {}, training: true };
   }
 }

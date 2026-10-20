@@ -496,19 +496,25 @@ test('Open et Pro dans un même événement : import, classements, podium et CSV
   assert.equal(P.groupLabel('Pro', 'Duo HH'), 'Pro · Duo HH');
   assert.throws(() => P.validateEntry(entry({ level: 'RX' })), /Open ou Pro/);
 });
-test('training event: flagged, past departures, a few results, unique title and survives validation', () => {
-  const now = new Date(2026, 9, 20, 15, 7);
-  const { race: r, entries } = P.trainingEvent([], now);
+test('training event: chosen format and size, departures from 8:00 in waves of 3, dated the day before until the last wave left', () => {
+  const people = Array.from({ length: 30 }, (_, i) => i % 2 ? { name1: `S${i}`, name2: '', gender1: 'F', gender2: '' } : { name1: `A${i}`, name2: `B${i}`, gender1: 'H', gender2: 'F' });
+  const evening = new Date(2026, 9, 20, 20, 0);
+  const { race: r, entries } = P.trainingEvent([], people, 'MIXED', true, evening);
   assert.equal(r.training, true);
+  assert.equal(r.format, 'MIXED');
   assert.equal(r.date, '2026-10-20');
   assert.deepEqual(Array.from(r.levels), ['Open', 'Pro']);
-  assert.equal(entries.length, 12);
-  assert.equal(entries[0].scheduled, '13:05');
-  assert.ok(entries.every(e => P.plannedAt(r, e) < now.getTime()));
+  assert.equal(entries.length, 30);
+  assert.equal(entries.filter(e => e.format === 'SOLO').length, 15);
+  assert.equal(entries[0].scheduled, '08:00');
+  assert.equal(entries[3].scheduled, '08:05');
+  assert.equal(entries[29].scheduled, '08:45');
+  assert.equal(entries[3].level, 'Pro');
   assert.equal(entries.filter(e => e.status === 'finished').length, 3);
-  const s = P.validateSession({ title: 'Test', date: r.date, races: [r], entries });
-  assert.equal(s.races[0].training, true);
-  assert.equal(P.validateRace({ ...r, training: undefined }).training, undefined);
-  assert.equal(P.trainingEvent([r], now).race.title, 'Entraînement 2 — Soundcrossing');
-  assert.equal(P.trainingEvent([], new Date(2026, 9, 20, 1, 30)).race.date, '2026-10-19');
+  assert.equal(P.validateSession({ title: 'Test', date: r.date, races: [r], entries }).races[0].training, true);
+  const early = P.trainingEvent([r], people, 'MIXED', false, new Date(2026, 9, 20, 8, 30));
+  assert.equal(early.race.date, '2026-10-19');
+  assert.equal(early.race.levels.length, 0);
+  assert.ok(early.entries.every(e => e.level === ''));
+  assert.equal(P.trainingEvent([r], people, 'MIXED', false, evening).race.title, 'Entraînement 2 — Soundcrossing');
 });

@@ -1025,8 +1025,21 @@ var Wod;
         XLSX.writeFile(book, `${state.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'wod'} - résultats.xlsx`);
     }
     // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
-    function loadTraining() {
-        const example = Wod.training(today(), store.events);
+    function openTraining() {
+        $('settings-dialog').close();
+        $('training-form').reset();
+        trainingSummary();
+        $('training-dialog').showModal();
+    }
+    function trainingChoice() {
+        const data = new FormData($('training-form')), format = (String(data.get('format')) || 'DUO');
+        return { format, people: Saisie.inscriptionsFictives(format, Number(data.get('count'))), data };
+    }
+    function trainingSummary() { $('training-summary').textContent = `Sera créé : ${Saisie.resumeFictifs(trainingChoice().people)}.`; }
+    function loadTraining(event) {
+        event.preventDefault();
+        const { format, people, data } = trainingChoice();
+        const example = Wod.training(today(), store.events, people, format, data.get('levels') === 'rx', data.get('method') === 'points' ? 'points' : 'places');
         example.id = `entrainement-${uid()}`;
         store.events.push(example);
         selectEvent(example.id);
@@ -1035,8 +1048,8 @@ var Wod;
             return;
         view = 'scores';
         render();
-        $('settings-dialog').close();
-        toast(`Entraînement créé : ${example.athletes.length} inscrits fictifs et ${example.workouts.length} WOD. Saisissez les scores.`);
+        $('training-dialog').close();
+        toast(`Entraînement créé : ${example.athletes.length} inscriptions fictives et ${example.workouts.length} WOD. Saisissez les scores.`);
     }
     function deleteTrainings(ids) {
         const events = store.events.filter(e => e.training && ids.includes(e.id));
@@ -1262,7 +1275,9 @@ var Wod;
         $('undo-button').addEventListener('click', undo);
         $('no-event-undo').addEventListener('click', undo);
         $('demo-settings').addEventListener('click', loadDemo);
-        $('training-create').addEventListener('click', loadTraining);
+        $('training-create').addEventListener('click', openTraining);
+        $('training-form').addEventListener('submit', loadTraining);
+        $('training-form').addEventListener('input', trainingSummary);
         $('training-delete').addEventListener('click', () => deleteTrainings([state.id]));
         $('training-delete-all').addEventListener('click', () => deleteTrainings(store.events.map(e => e.id)));
         $('reset-button').addEventListener('click', () => {

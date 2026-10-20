@@ -101,6 +101,44 @@ var Saisie;
         });
     }
     Saisie.install = install;
+    Saisie.MAX_FICTIFS = 80;
+    function inscriptionsFictives(format, personnes) {
+        const hommes = ['Alex', 'Hugo', 'Tom', 'Lucas', 'Jules', 'Paul', 'Max', 'Théo', 'Louis', 'Nathan', 'Léo', 'Gabriel', 'Arthur', 'Raphaël', 'Ethan', 'Noah', 'Adam', 'Victor', 'Sacha', 'Mathis', 'Enzo', 'Baptiste', 'Simon', 'Antoine', 'Clément', 'Quentin', 'Romain', 'Julien', 'Bastien', 'Yanis', 'Martin', 'Axel', 'Samuel', 'Robin', 'Malo', 'Oscar', 'Marius', 'Kylian', 'Tristan', 'Valentin', 'Damien', 'Florian', 'Kevin', 'Olivier', 'Pierre'];
+        const femmes = ['Emma', 'Léa', 'Zoé', 'Manon', 'Nina', 'Inès', 'Chloé', 'Sarah', 'Camille', 'Jade', 'Louise', 'Alice', 'Lina', 'Rose', 'Anna', 'Julia', 'Lola', 'Clara', 'Eva', 'Juliette', 'Margot', 'Lou', 'Agathe', 'Romane', 'Mila', 'Elsa', 'Lucie', 'Pauline', 'Laura', 'Marie', 'Charlotte', 'Océane', 'Mathilde', 'Justine', 'Anaïs', 'Léna', 'Ambre', 'Maëlle', 'Noémie', 'Héloïse', 'Elise', 'Audrey', 'Céline', 'Sophie', 'Julie'];
+        const noms = ['Martin', 'Durand', 'Robert', 'Petit', 'Leroy', 'Moreau', 'Garcia', 'Bernard', 'Roux', 'Faure', 'Morel', 'Girard', 'Fabre', 'Vidal', 'Lambert', 'Roche', 'Blanc', 'Denis', 'Fournier', 'Mercier', 'Dupont', 'Bonnet', 'Legrand', 'Garnier', 'Chevalier', 'Rousseau', 'Perrin', 'Gauthier', 'Masson', 'Muller'];
+        let h = 0, f = 0, k = 0;
+        const personne = (g) => `${g === 'H' ? hommes[h++ % hommes.length] : femmes[f++ % femmes.length]} ${noms[k++ % noms.length]}`;
+        const total = Math.max(1, Math.min(Saisie.MAX_FICTIFS, Math.floor(personnes) || 0));
+        const equipes = format === 'DUO' ? Math.max(1, Math.floor(total / 2)) : format === 'MIXED' ? Math.floor(total / 4) : 0;
+        const solos = format === 'DUO' ? 0 : total - 2 * equipes;
+        const duoTypes = [['H', 'H'], ['F', 'F'], ['H', 'F']];
+        const liste = [];
+        for (let s = 0, d = 0; s < solos || d < equipes;) {
+            if (s < solos && (s <= d || d >= equipes)) {
+                const g = s++ % 2 ? 'F' : 'H';
+                liste.push({ name1: personne(g), name2: '', gender1: g, gender2: '' });
+            }
+            else {
+                const [g1, g2] = duoTypes[d++ % 3];
+                liste.push({ name1: personne(g1), name2: personne(g2), gender1: g1, gender2: g2 });
+            }
+        }
+        return liste;
+    }
+    Saisie.inscriptionsFictives = inscriptionsFictives;
+    // Résumé lisible pour la fenêtre de création : « 15 duos : 5 HH, 5 FF, 5 HF ».
+    function resumeFictifs(liste) {
+        const cat = (i) => !i.name2 ? i.gender1 : i.gender1 === i.gender2 ? i.gender1 + i.gender2 : 'HF';
+        const compte = (c) => liste.filter(i => cat(i) === c).length;
+        const solos = liste.filter(i => !i.name2).length, duos = liste.length - solos, parts = [];
+        if (solos)
+            parts.push(`${solos} solo${solos > 1 ? 's' : ''} (${compte('H')} H, ${compte('F')} F)`);
+        if (duos)
+            parts.push(`${duos} duo${duos > 1 ? 's' : ''} (${compte('HH')} HH, ${compte('FF')} FF, ${compte('HF')} HF)`);
+        const personnes = solos + 2 * duos;
+        return `${parts.join(' + ')} · ${personnes} personne${personnes > 1 ? 's' : ''}`;
+    }
+    Saisie.resumeFictifs = resumeFictifs;
 })(Saisie || (Saisie = {}));
 // Témoin de sauvegarde, partagé par l’Hyrox et le WOD : la pastille de l’en-tête dit si la copie
 // sur l’ordinateur (dossier Documents/Soundcrossing, écrit par server.py) est à jour.

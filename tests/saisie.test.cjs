@@ -44,3 +44,21 @@ test('WOD court (cap < 1 h) : case mm:ss', () => {
   assert.throws(() => S.duration('12:75', true), /entre 00 et 59/);
   assert.throws(() => S.duration('12:3', true), /mm:ss/);
 });
+test('fake training entries: solo, duo or both, up to 80 people, H and F balanced, all names different', () => {
+  const cat = d => !d.name2 ? d.gender1 : d.gender1 === d.gender2 ? d.gender1 + d.gender2 : 'HF';
+  const count = (list, c) => list.filter(d => cat(d) === c).length;
+  const duos = S.inscriptionsFictives('DUO', 60);
+  assert.equal(duos.length, 30);
+  for (const c of ['HH', 'FF', 'HF']) assert.equal(count(duos, c), 10);
+  const solos = S.inscriptionsFictives('SOLO', 9);
+  assert.equal(solos.length, 9); assert.equal(count(solos, 'H'), 5); assert.equal(count(solos, 'F'), 4);
+  const mixed = S.inscriptionsFictives('MIXED', 40);
+  assert.equal(mixed.filter(d => !d.name2).length + 2 * mixed.filter(d => d.name2).length, 40);
+  assert.equal(mixed.filter(d => d.name2).length, 10);
+  assert.equal(S.inscriptionsFictives('SOLO', 500).length, 80);
+  for (const format of ['SOLO', 'DUO', 'MIXED']) {
+    const list = S.inscriptionsFictives(format, 80), names = list.flatMap(d => d.name2 ? [d.name1, d.name2] : [d.name1]);
+    assert.equal(new Set(names).size, names.length);
+  }
+  assert.equal(S.resumeFictifs(duos), '30 duos (10 HH, 10 FF, 10 HF) · 60 personnes');
+});

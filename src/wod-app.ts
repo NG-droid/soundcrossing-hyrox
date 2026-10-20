@@ -721,12 +721,22 @@ namespace Wod {
     XLSX.writeFile(book, `${state.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'wod'} - résultats.xlsx`);
   }
   // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
-  function loadTraining(): void {
-    const example = training(today(), store.events);
+  function openTraining(): void {
+    $<HTMLDialogElement>('settings-dialog').close(); $<HTMLFormElement>('training-form').reset(); trainingSummary(); $<HTMLDialogElement>('training-dialog').showModal();
+  }
+  function trainingChoice(): { format: EventFormat; people: Saisie.InscriptionFictive[]; data: FormData } {
+    const data = new FormData($<HTMLFormElement>('training-form')), format = (String(data.get('format')) || 'DUO') as EventFormat;
+    return { format, people: Saisie.inscriptionsFictives(format, Number(data.get('count'))), data };
+  }
+  function trainingSummary(): void { $('training-summary').textContent = `Sera créé : ${Saisie.resumeFictifs(trainingChoice().people)}.`; }
+  function loadTraining(event: Event): void {
+    event.preventDefault();
+    const { format, people, data } = trainingChoice();
+    const example = training(today(), store.events, people, format, data.get('levels') === 'rx', data.get('method') === 'points' ? 'points' : 'places');
     example.id = `entrainement-${uid()}`;
     store.events.push(example); selectEvent(example.id); rememberEvent(); if (!save(false, `création de l’entraînement ${example.title}`)) return;
     view = 'scores'; render();
-    $<HTMLDialogElement>('settings-dialog').close(); toast(`Entraînement créé : ${example.athletes.length} inscrits fictifs et ${example.workouts.length} WOD. Saisissez les scores.`);
+    $<HTMLDialogElement>('training-dialog').close(); toast(`Entraînement créé : ${example.athletes.length} inscriptions fictives et ${example.workouts.length} WOD. Saisissez les scores.`);
   }
   function deleteTrainings(ids: string[]): void {
     const events = store.events.filter(e => e.training && ids.includes(e.id)); if (!events.length) return;
@@ -837,7 +847,9 @@ namespace Wod {
     $('no-event-demo').addEventListener('click', loadDemo);
     $('undo-button').addEventListener('click', undo); $('no-event-undo').addEventListener('click', undo);
     $('demo-settings').addEventListener('click', loadDemo);
-    $('training-create').addEventListener('click', loadTraining);
+    $('training-create').addEventListener('click', openTraining);
+    $('training-form').addEventListener('submit', loadTraining);
+    $('training-form').addEventListener('input', trainingSummary);
     $('training-delete').addEventListener('click', () => deleteTrainings([state.id]));
     $('training-delete-all').addEventListener('click', () => deleteTrainings(store.events.map(e => e.id)));
     $('reset-button').addEventListener('click', () => {

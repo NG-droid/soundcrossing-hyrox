@@ -758,11 +758,21 @@ namespace PaceApp {
     } catch (error) { toast(error instanceof Error ? error.message : 'Sauvegarde invalide.', true); }
   }
   // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
-  function createTraining(): void {
-    const { race, entries } = Pace.trainingEvent(state.session.races);
+  function openTraining(): void {
+    $<HTMLDialogElement>('settings-dialog').close(); $<HTMLFormElement>('training-form').reset(); trainingSummary(); $<HTMLDialogElement>('training-dialog').showModal();
+  }
+  function trainingChoice(): { format: Saisie.FormatFictif; people: Saisie.InscriptionFictive[]; withLevels: boolean } {
+    const data = new FormData($<HTMLFormElement>('training-form')), format = (String(data.get('format')) || 'DUO') as Saisie.FormatFictif;
+    return { format, people: Saisie.inscriptionsFictives(format, Number(data.get('count'))), withLevels: data.get('levels') === 'pro' };
+  }
+  function trainingSummary(): void { $('training-summary').textContent = `Sera créé : ${Saisie.resumeFictifs(trainingChoice().people)}.`; }
+  function createTraining(event: SubmitEvent): void {
+    event.preventDefault();
+    const { format, people, withLevels } = trainingChoice();
+    const { race, entries } = Pace.trainingEvent(state.session.races, people, format, withLevels);
     if (commit(`création de l’entraînement ${race.title}`, session => { session.races.push(race); session.entries.push(...entries); })) {
       selectedRaceId = race.id; focusId = ''; activeFormat = 'all'; activeLevel = ''; view = 'scores'; $<HTMLInputElement>('search').value = ''; rememberEvent();
-      $<HTMLDialogElement>('settings-dialog').close(); render();
+      $<HTMLDialogElement>('training-dialog').close(); render();
       toast(`Entraînement créé : ${entries.length} inscriptions fictives. Saisissez les arrivées dans « Scores ».`);
     }
   }
@@ -887,7 +897,8 @@ namespace PaceApp {
   $('new-session-button').addEventListener('click', () => { $<HTMLDialogElement>('settings-dialog').close(); $<HTMLDialogElement>('reset-dialog').showModal(); $('reset-save').focus(); });
   $('reset-save').addEventListener('click', () => { exportBackup(); resetAll(); });
   $('reset-now').addEventListener('click', resetAll);
-  $('demo-button').addEventListener('click', createTraining); $('training-create').addEventListener('click', createTraining);
+  $('demo-button').addEventListener('click', openTraining); $('training-create').addEventListener('click', openTraining);
+  $('training-form').addEventListener('submit', event => createTraining(event as SubmitEvent)); $('training-form').addEventListener('input', trainingSummary);
   $('training-delete').addEventListener('click', () => deleteTrainings([selectedRaceId])); $('training-delete-all').addEventListener('click', () => deleteTrainings(state.session.races.map(r => r.id)));
   $('undo-button').addEventListener('click', undo);
   $('search').addEventListener('input', render); $('sort').addEventListener('change', render);
