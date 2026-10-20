@@ -32,7 +32,10 @@ namespace Wod {
   }
   // Comme dans l’app Hyrox : plusieurs événements, chacun avec son format Solo, Duo ou Solo + Duo.
   // revision et savedAt : comme dans l’app Hyrox, pour repérer une écriture plus récente faite ailleurs.
-  export interface Store { version: 2; events: Competition[]; selectedId: string; revision?: string; savedAt?: number; }
+  // Historique pour « Annuler », comme dans l’Hyrox : l’état complet d’avant chaque modification (15 au maximum).
+  export interface Snapshot { label: string; selectedId: string; events: Competition[]; }
+  export const MAX_HISTORY = 15;
+  export interface Store { version: 2; events: Competition[]; selectedId: string; revision?: string; savedAt?: number; history?: Snapshot[]; }
   export interface Placed { athlete: Athlete; rank: number; score: Score; }
   export interface GeneralRow { athlete: Athlete; rank: number; total: number; places: Record<string, number | null>; }
   export const phaseOf = (w: Workout): Phase => w.phase === 'final' ? 'final' : 'qualif';
@@ -448,6 +451,21 @@ namespace Wod {
   }
 
   // Accepte aussi l’ancienne sauvegarde de la version test (une seule compétition).
+  // Un historique abîmé ne bloque jamais les données : les étapes illisibles sont simplement oubliées.
+  function validateHistory(value: unknown): Snapshot[] {
+    if (!Array.isArray(value)) return [];
+    const kept: Snapshot[] = [];
+    for (const item of value.slice(-MAX_HISTORY)) {
+      try {
+        const h = item as Partial<Snapshot> | null;
+        if (!h || !isText(h.label) || !Array.isArray(h.events)) continue;
+        const events = h.events.map(e => validate(e));
+        if (new Set(events.map(e => e.id)).size !== events.length) continue;
+        kept.push({ label: h.label, selectedId: isText(h.selectedId) ? h.selectedId : '', events });
+      } catch { /* Étape ignorée. */ }
+    }
+    return kept;
+  }
   export function validateStore(value: unknown, strict = false): Store {
     const v = value as Partial<Store> | null;
     const meta = { revision: v && isText(v.revision) ? v.revision : '', savedAt: v && typeof v.savedAt === 'number' && Number.isFinite(v.savedAt) ? v.savedAt : 0 };
@@ -455,7 +473,7 @@ namespace Wod {
       const events = v.events.map(e => validate(e, strict));
       if (new Set(events.map(e => e.id)).size !== events.length) throw Error('Deux événements ont le même identifiant : sauvegarde abîmée.');
       const selectedId = events.some(e => e.id === v.selectedId) ? String(v.selectedId) : events[0]?.id ?? '';
-      return { version: 2, events, selectedId, ...meta };
+      return { version: 2, events, selectedId, ...meta, history: validateHistory(v.history) };
     }
     const single = validate(value, strict);
     return { version: 2, events: [single], selectedId: single.id, ...meta };

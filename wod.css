@@ -41,6 +41,8 @@
 .button.finalist-on{background:#1b1b1b;border-color:#1b1b1b;color:#fff}
 /* Feuilles de jury : invisibles à l’écran, seules imprimées (deux par page A4). */
 .jury-print{display:none}
+/* « Annuler » reste accessible après la suppression du dernier événement. */
+#no-event-undo{display:inline-flex;margin-top:16px}
 @media print{
   @page{size:A4 portrait;margin:10mm}
   body{background:#fff!important}
