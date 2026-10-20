@@ -233,8 +233,8 @@
 /* Colonne du rang (et du n° de WOD) : étroite, centrée. */
 .race-table[data-view] #rank-heading,.wod-table:is([data-view=workouts],[data-view=ranking]) th:first-child{width:90px}
 /* Colonne Actions : juste la place des boutons. */
-.race-table[data-view=participants] th:last-child{width:130px}
-.race-table:is([data-view=scores],[data-view=live]) th:last-child{width:290px}
+.race-table[data-view=participants] th:last-child{width:240px}
+.race-table:is([data-view=scores],[data-view=live]) th:last-child{width:330px}
 .race-table[data-view=results] th:last-child{width:160px}
 .wod-table:is([data-view=athletes],[data-view=workouts]) th:last-child{width:240px}
 .wod-table[data-view=scores] th:last-child{width:130px}
@@ -325,3 +325,5 @@
 
 /* Mode entraînement (Hyrox + WOD) : bandeau et pastille bien visibles sur un événement fictif. */
 .training-banner{display:flex;align-items:center;gap:16px;margin:0 0 24px;padding:14px 18px;border:1px solid #c4c4bf;border-left:5px solid #1b1b1b;border-radius:12px;background:repeating-linear-gradient(135deg,#fff 0 14px,#f3f3ef 14px 28px)}.training-banner p{flex:1;margin:0;font-size:14px;font-weight:600;color:#333}.training-pill,.event-pick-training{display:inline-block;background:#1b1b1b;color:#fff;border-bottom:2px solid #d8242d;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap}.event-pick-training{font-style:normal;font-size:10px;letter-spacing:1px;padding:3px 7px;margin-left:6px}@media(max-width:700px){.training-banner{flex-wrap:wrap}}
+/* Boutons des lignes Hyrox : même modèle que le WOD (« Modifier », « Supprimer » en texte). */
+.button.photo-action{background:linear-gradient(#3a3a3a,#111);border-color:#000;color:#fff;box-shadow:0 2px 4px #0006,inset 0 1px 0 #555}
