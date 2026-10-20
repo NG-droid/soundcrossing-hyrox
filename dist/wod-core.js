@@ -3,6 +3,7 @@
 var Wod;
 (function (Wod) {
     Wod.STATUS_LABELS = { todo: 'À saisir', done: 'Terminé', capped: 'Arrêté au cap', forfeit: 'Forfait' };
+    Wod.MAX_HISTORY = 15;
     Wod.phaseOf = (w) => w.phase === 'final' ? 'final' : 'qualif';
     function phaseWorkouts(c, phase) { return c.workouts.filter(w => Wod.phaseOf(w) === phase); }
     Wod.phaseWorkouts = phaseWorkouts;
@@ -534,6 +535,25 @@ var Wod;
     }
     Wod.validate = validate;
     // Accepte aussi l’ancienne sauvegarde de la version test (une seule compétition).
+    // Un historique abîmé ne bloque jamais les données : les étapes illisibles sont simplement oubliées.
+    function validateHistory(value) {
+        if (!Array.isArray(value))
+            return [];
+        const kept = [];
+        for (const item of value.slice(-Wod.MAX_HISTORY)) {
+            try {
+                const h = item;
+                if (!h || !isText(h.label) || !Array.isArray(h.events))
+                    continue;
+                const events = h.events.map(e => validate(e));
+                if (new Set(events.map(e => e.id)).size !== events.length)
+                    continue;
+                kept.push({ label: h.label, selectedId: isText(h.selectedId) ? h.selectedId : '', events });
+            }
+            catch { /* Étape ignorée. */ }
+        }
+        return kept;
+    }
     function validateStore(value, strict = false) {
         const v = value;
         const meta = { revision: v && isText(v.revision) ? v.revision : '', savedAt: v && typeof v.savedAt === 'number' && Number.isFinite(v.savedAt) ? v.savedAt : 0 };
@@ -542,7 +562,7 @@ var Wod;
             if (new Set(events.map(e => e.id)).size !== events.length)
                 throw Error('Deux événements ont le même identifiant : sauvegarde abîmée.');
             const selectedId = events.some(e => e.id === v.selectedId) ? String(v.selectedId) : events[0]?.id ?? '';
-            return { version: 2, events, selectedId, ...meta };
+            return { version: 2, events, selectedId, ...meta, history: validateHistory(v.history) };
         }
         const single = validate(value, strict);
         return { version: 2, events: [single], selectedId: single.id, ...meta };

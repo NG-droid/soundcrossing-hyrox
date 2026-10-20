@@ -241,3 +241,14 @@ test('training event has the demo athletes and WODs but no scores, and keeps its
   assert.equal(W.training('2026-10-20', [t]).title, 'Entraînement 2 — Soundcrossing WOD');
   assert.equal(W.demo('2026-10-20').training, true);
 });
+
+test('undo history is kept with the data, capped at 15 steps, and a damaged step never blocks loading', () => {
+  const c = { ...W.emptyCompetition('c', 'Test', '2026-10-20', 'MIXED'), athletes: [athlete('a')] };
+  const before = { ...W.emptyCompetition('c', 'Test', '2026-10-20', 'MIXED') };
+  const history = [...Array.from({ length: 20 }, (_, i) => ({ label: `étape ${i}`, selectedId: 'c', events: [before] })), { label: 'abîmée', events: 'x' }];
+  const store = W.validateStore({ version: 2, events: [c], selectedId: 'c', history });
+  assert.equal(store.history.length, 14);
+  assert.equal(store.history.at(-1).label, 'étape 19');
+  assert.equal(store.history[0].events[0].athletes.length, 0);
+  assert.equal(W.validateStore({ version: 2, events: [c], selectedId: 'c' }).history.length, 0);
+});
