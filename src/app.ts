@@ -10,6 +10,7 @@ namespace PaceApp {
   const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
   const fresh = (): Pace.Store => ({ version: 4, revision: crypto.randomUUID(), savedAt: 0, session: { title: 'Soundcrossing', date: localDate(), races: [], entries: [] }, history: [], settings: { photoTemplate: 'club' } });
   let state = fresh(), loadedRaw: string | null = null, storageBlocked = false;
+  const SAMPLE_PHOTO = '__exemple__';
   let view: 'participants' | 'live' | 'scores' | 'results' = 'participants', focusId = '', photoId = '';
   let photoReturnFocus: HTMLElement | null = null, photoReturnScroll = 0, photoReturnHeight = 0;
   let podiumSelection: Pace.PodiumSelection | null = null, fullscreenOwned = false;
@@ -505,6 +506,7 @@ namespace PaceApp {
     } catch (error) { $('result-error').textContent = error instanceof Error ? error.message : 'Résultat invalide.'; }
   }
   function renderPhoto(): void {
+    if (photoId === SAMPLE_PHOTO) { renderSamplePhoto(); return; }
     const e = entryById(photoId);
     if (!e || e.status !== 'finished') { closePresentation(); return; }
     const race = state.session.races.find(r => r.id === e.raceId)!;
@@ -534,7 +536,19 @@ namespace PaceApp {
     if (status === 'withdrawn') ask(`Confirmer le forfait ou l’abandon de ${label(entry)} ?`, entry.status === 'finished' ? 'Le temps et l’arrivée seront retirés du classement. L’inscription est conservée ; Annuler permet de rétablir le résultat.' : 'L’inscription est conservée, sans temps ni classement. « Remettre en course » ou Annuler permet de revenir en arrière.', apply, 'Confirmer le forfait');
     else apply();
   }
+  // Aperçu du style sans arrivée enregistrée : participant fictif, rien n’est sauvegardé.
+  function renderSamplePhoto(): void {
+    const race = currentRace(), date = race?.date ?? new Date().toISOString().slice(0, 10);
+    $('photo-event').textContent = race?.title ?? 'Exemple d’événement';
+    $('photo-date').textContent = new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, first => first.toLocaleUpperCase('fr-FR'));
+    $('photo-screen').dataset.template = state.settings.photoTemplate;
+    $('photo-category').textContent = 'Solo H';
+    $('photo-rank').hidden = false; $('photo-rank').textContent = '1er · Solo H';
+    $('photo-names').textContent = 'Participant exemple';
+    $('photo-time').textContent = clock(3_725_000);
+  }
   function openPhoto(id: string): void {
+    if (id === SAMPLE_PHOTO) { photoId = id; renderPhoto(); openPresentation('photo-screen'); return; }
     if (entryById(id)?.status !== 'finished') return;
     photoId = id; renderPhoto(); openPresentation('photo-screen');
   }
@@ -844,7 +858,7 @@ namespace PaceApp {
     const candidate = clone(state); candidate.settings.photoTemplate = $<HTMLSelectElement>('photo-template').value as Pace.PhotoTemplate;
     candidate.savedAt = Date.now(); candidate.revision = crypto.randomUUID(); if (persist(candidate)) render(); else render();
   });
-  $('preview-photo').addEventListener('click', () => { const entry = raceEntries().find(e => e.status === 'finished'); if (entry) { $<HTMLDialogElement>('settings-dialog').close(); openPhoto(entry.id); } else toast('Enregistrez une arrivée pour voir la photo finish.'); });
+  $('preview-photo').addEventListener('click', () => { const entry = raceEntries().find(e => e.status === 'finished'); $<HTMLDialogElement>('settings-dialog').close(); openPhoto(entry?.id ?? SAMPLE_PHOTO); });
   const resetAll = () => {
     $<HTMLDialogElement>('reset-dialog').close();
     if (commit('remise à zéro', session => { session.title = 'Soundcrossing'; session.date = localDate(); session.races = []; session.entries = []; })) { focusId = ''; selectedRaceId = ''; view = 'participants'; activeFormat = 'all'; render(); toast('Tout est effacé. « Annuler » permet encore de revenir en arrière.'); }
