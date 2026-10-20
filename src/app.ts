@@ -24,7 +24,8 @@ namespace PaceApp {
   let selectedGender1: Pace.Gender = '', selectedGender2: Pace.Gender = '';
   let resultMode: Pace.ResultMode = 'arrival', capturedArrival: Pace.ArrivalCapture | null = null;
   let arrivalDraft = '';
-  let durationFields: Pace.DurationFields = { hours: '', minutes: '00', seconds: '00' };
+  // Temps total tapé dans la case de temps unique (hh:mm:ss).
+  let durationText = '';
   const editSnapshots = new WeakMap<HTMLFormElement, Pace.EditSnapshot>();
   const formatOptions: { key: Pace.RankingFormat; label: string }[] = [{ key: 'H', label: 'Solo H' }, { key: 'F', label: 'Solo F' }, { key: 'HH', label: 'Duo HH' }, { key: 'FF', label: 'Duo FF' }, { key: 'HF', label: 'Duo HF' }, { key: 'SOLO', label: 'Solo à préciser' }];
   let toastTimer: number | undefined, confirmation: (() => void) | null = null;
@@ -214,7 +215,7 @@ namespace PaceApp {
     // Un temps enregistré est verrouillé : le crayon le rend modifiable.
     // Un forfait n’a pas d’heure à saisir : « Remettre en course » d’abord, sinon une heure tapée par erreur l’annulerait.
     const locked = e.status === 'finished' && unlockedId !== e.id || out;
-    const arrival = `<div class="arrival-entry"><input class="score-time" type="time" step="1" data-arrival="${esc(e.id)}" value="${e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt)}" aria-label="Heure d’arrivée de ${esc(label(e))}"${locked ? ' disabled' : ''}></div>`;
+    const arrival = `<div class="arrival-entry">${Saisie.box(`data-arrival="${esc(e.id)}"${locked ? ' disabled' : ''}`, e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt), `Heure d’arrivée de ${esc(label(e))}`)}</div>`;
     const actions = [
       e.status === 'finished' ? textButton('photo', e.id, 'Photo finish', 'photo-action') : '',
       locked && !out ? textButton('unlock', e.id, 'Modifier', '', `Modifier le temps de ${label(e)}`) : '',
@@ -392,7 +393,7 @@ namespace PaceApp {
     const format = entry?.format ?? (race.format === 'MIXED' ? lastFormat : race.format);
     selectedGender1 = entry?.gender1 ?? ''; selectedGender2 = entry?.gender2 ?? '';
     chooseEntryFormat(format);
-    $('scheduled-hint').textContent = entry?.arrivedAt ? entry.resultMode === 'duration' ? 'Modifier le départ conserve le temps total saisi et décale l’arrivée.' : 'Modifier le départ recalcule le temps total à partir de l’arrivée enregistrée.' : 'Heure de départ à la date de cette course. Les secondes peuvent être précisées.';
+    $('scheduled-hint').textContent = entry?.arrivedAt ? entry.resultMode === 'duration' ? 'Modifier le départ conserve le temps total saisi et décale l’arrivée.' : 'Modifier le départ recalcule le temps total à partir de l’arrivée enregistrée.' : 'Heure de départ à la date de cette course (hh:mm).';
     $<HTMLDialogElement>('entry-dialog').showModal();
     const genderChoice = form.querySelector<HTMLButtonElement>('button[data-person="1"][data-gender="H"]');
     const needsGender = genderChoice && genderChoice.offsetParent !== null && !form.querySelector('button[data-person="1"][aria-pressed="true"]');
@@ -443,33 +444,33 @@ namespace PaceApp {
     editSnapshots.set(form, Pace.captureEdit(state.session, 'entry', entry.id, race.id));
     capturedArrival = null;
     arrivalDraft = entry.arrivedAt === null ? '' : Pace.timeOfDay(entry.arrivedAt);
-    const parts = (entry.durationMs === null ? '' : clock(entry.durationMs)).split(':');
-    durationFields = { hours: parts[0] ?? '', minutes: parts[1] ?? '00', seconds: parts[2] ?? '00' };
+    durationText = entry.durationMs === null ? '' : clock(entry.durationMs);
     resultMode = entry.resultMode; syncResultMode();
     $('result-participant').textContent = label(entry); $('result-departure').textContent = `${race.title} · Départ : ${departureText(entry)}`; $('result-error').textContent = '';
     $('result-status').textContent = Pace.statusLabel(entry);
     $('result-status').hidden = entry.status !== 'abandoned' && entry.status !== 'withdrawn';
     $('reset-outcome').hidden = entry.status !== 'abandoned' && entry.status !== 'withdrawn';
     $('clear-result').hidden = entry.status !== 'finished';
-    previewArrival(); $<HTMLDialogElement>('result-dialog').showModal(); field(form, resultMode === 'duration' ? 'durationHours' : 'arrival').focus();
+    previewArrival(); $<HTMLDialogElement>('result-dialog').showModal(); field(form, resultMode === 'duration' ? 'duration' : 'arrival').focus();
   }
   function syncResultMode(): void {
     const duration = resultMode === 'duration', input = field($<HTMLFormElement>('result-form'), 'arrival') as HTMLInputElement;
     document.querySelectorAll<HTMLButtonElement>('[data-result-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.resultMode === resultMode)));
     input.disabled = duration; input.required = !duration;
     $('arrival-input-field').hidden = duration; $('duration-input-field').hidden = !duration;
-    $('result-input-hint').textContent = duration ? 'Choisissez les heures, les minutes et les secondes du temps total.' : 'Même sélecteur que pour le départ. Les secondes peuvent être précisées.';
+    $('result-input-hint').textContent = duration ? 'Tapez le temps total : heures, minutes, secondes (ex. 010215 → 01:02:15).' : 'Tapez l’heure d’arrivée : heures, minutes, secondes (ex. 091530 → 09:15:30).';
     input.value = arrivalDraft;
-    for (const [name, value] of [['durationHours', durationFields.hours], ['durationMinutes', durationFields.minutes], ['durationSeconds', durationFields.seconds]] as const) {
-      const part = field($<HTMLFormElement>('result-form'), name) as HTMLInputElement;
-      part.value = value; part.disabled = !duration; part.required = duration && name === 'durationHours';
-    }
+    const total = field($<HTMLFormElement>('result-form'), 'duration') as HTMLInputElement;
+    total.value = durationText; total.disabled = !duration; total.required = duration;
     $('arrival-now').hidden = duration;
     $('save-result-button').textContent = 'Enregistrer le résultat';
   }
   function resultFromInput(entry: Pace.Entry, race: Pace.Race): Pace.ArrivalResult {
-    if (resultMode === 'duration') return Pace.calculateDuration(race, entry, Pace.durationFromFields(durationFields));
-    const value = field($<HTMLFormElement>('result-form'), 'arrival').value;
+    if (resultMode === 'duration') {
+      const p = Saisie.parts(durationText); if (!p) throw Error('Renseignez le temps total.');
+      return Pace.calculateDuration(race, entry, Pace.durationFromFields({ hours: String(p[0]), minutes: String(p[1]), seconds: String(p[2]) }));
+    }
+    const value = Saisie.clockTime(field($<HTMLFormElement>('result-form'), 'arrival').value);
     try { return Pace.calculateResultArrival(race, entry, value, capturedArrival); }
     catch (error) {
       if (error instanceof Error && error.message.includes('après minuit')) throw Error('L’heure d’arrivée précède le départ. Vérifiez l’heure ou saisissez le temps total.');
@@ -479,7 +480,7 @@ namespace PaceApp {
   function previewArrival(): void {
     const form = $<HTMLFormElement>('result-form'), entry = entryById(field(form, 'id').value);
     $('arrival-preview').classList.remove('complete', 'invalid');
-    if (!entry || (resultMode === 'duration' ? !durationFields.hours : !field(form, 'arrival').value)) { $('arrival-preview').textContent = resultMode === 'duration' ? 'Saisissez le temps total ; l’arrivée sera calculée à partir du départ.' : 'Saisissez l’heure d’arrivée ; le temps total sera calculé.'; return; }
+    if (!entry || (resultMode === 'duration' ? !durationText : !field(form, 'arrival').value)) { $('arrival-preview').textContent = resultMode === 'duration' ? 'Saisissez le temps total ; l’arrivée sera calculée à partir du départ.' : 'Saisissez l’heure d’arrivée ; le temps total sera calculé.'; return; }
     try {
       const race = state.session.races.find(r => r.id === entry.raceId)!;
       const result = resultFromInput(entry, race);
@@ -921,16 +922,9 @@ namespace PaceApp {
   const resultForm = $<HTMLFormElement>('result-form');
   resultForm.addEventListener('input', () => {
     if (resultMode === 'arrival') arrivalDraft = field(resultForm, 'arrival').value;
-    else durationFields = { hours: field(resultForm, 'durationHours').value, minutes: field(resultForm, 'durationMinutes').value, seconds: field(resultForm, 'durationSeconds').value };
+    else durationText = field(resultForm, 'duration').value;
     $('result-error').textContent = ''; previewArrival();
   });
-  for (const name of ['durationHours', 'durationMinutes', 'durationSeconds']) {
-    const part = field(resultForm, name) as HTMLInputElement;
-    part.addEventListener('blur', () => {
-      if (/^\d{1,2}$/.test(part.value)) part.value = part.value.padStart(2, '0');
-      durationFields[name === 'durationHours' ? 'hours' : name === 'durationMinutes' ? 'minutes' : 'seconds'] = part.value;
-    });
-  }
   document.querySelectorAll<HTMLButtonElement>('[data-result-mode]').forEach(button => button.addEventListener('click', () => {
     resultMode = button.dataset.resultMode as Pace.ResultMode; syncResultMode(); $('result-error').textContent = ''; previewArrival();
   }));

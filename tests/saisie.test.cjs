@@ -62,3 +62,12 @@ test('fake training entries: solo, duo or both, up to 80 people, H and F balance
   }
   assert.equal(S.resumeFictifs(duos), '30 duos (10 HH, 10 FF, 10 HF) · 60 personnes');
 });
+
+test('une seule case de temps partout : même classe, --:--:-- ou --:-- (départ hh:mm, WOD court mm:ss)', () => {
+  const long = S.box('data-arrival="a"', '09:15:30', 'Arrivée'), short = S.box('data-field="time"', '12:30', 'Temps', 2);
+  assert.match(long, /class="score-time time-box"/); assert.match(long, /data-blocks="3"/); assert.match(long, /placeholder="--:--:--"/); assert.match(long, /maxlength="8"/);
+  assert.match(short, /class="score-time time-box"/); assert.match(short, /data-blocks="2"/); assert.match(short, /placeholder="--:--"/); assert.match(short, /maxlength="5"/);
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.doesNotMatch(html, /type="time"/);
+  for (const name of ['scheduled', 'arrival', 'duration']) assert.match(html, new RegExp(`class="score-time time-box" name="${name}"`));
+});
