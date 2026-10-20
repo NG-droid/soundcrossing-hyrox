@@ -258,16 +258,33 @@ var Wod;
         if (!last)
             return;
         const where = last.events.find(e => e.id === last.selectedId)?.title;
-        if (!confirm(`Annuler la dernière modification ?\n\nRevenir avant : ${last.label}${where ? ` (${where})` : ''}. Les inscriptions, WOD et scores précédents seront rétablis.`))
-            return;
-        store.history = store.history.slice(0, -1);
-        store.events = last.events;
-        selectEvent(last.selectedId);
-        rememberEvent();
-        if (save(false, '', true)) {
-            render();
-            toast('Dernière modification annulée.');
-        }
+        ask('Annuler la dernière modification ?', `Revenir avant : ${last.label}${where ? ` (${where})` : ''}. Les inscriptions, WOD et scores précédents seront rétablis.`, () => {
+            const cur = store.history?.at(-1);
+            if (!cur || cur.label !== last.label)
+                return;
+            store.history = store.history.slice(0, -1);
+            store.events = cur.events;
+            selectEvent(cur.selectedId);
+            rememberEvent();
+            if (save(false, '', true)) {
+                render();
+                toast('Dernière modification annulée.');
+            }
+        }, 'Annuler la modification');
+    }
+    // Confirmations dans la fenêtre de l’app, comme l’Hyrox (jamais la fenêtre grise du navigateur).
+    let confirmation = null;
+    function ask(title, message, action, button = 'Confirmer') {
+        $('confirm-title').textContent = title;
+        $('confirm-description').textContent = message;
+        $('confirm-action').textContent = button;
+        confirmation = action;
+        $('confirm-dialog').showModal();
+    }
+    function notice(title, message) {
+        $('notice-title').textContent = title;
+        $('notice-description').textContent = message;
+        $('notice-dialog').showModal();
     }
     let toastTimer = 0;
     function toast(text) {
@@ -360,7 +377,7 @@ var Wod;
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
             const result = Wod.importAthletes(rows, state, uid);
             if (result.errors.length) {
-                alert(`Import annulé, rien n’a été ajouté. Corrigez le fichier :\n\n${result.errors.slice(0, 8).join('\n')}${result.errors.length > 8 ? `\n… et ${result.errors.length - 8} autre(s) erreur(s).` : ''}`);
+                notice('Import annulé', `Rien n’a été ajouté. Corrigez le fichier :\n\n${result.errors.slice(0, 8).join('\n')}${result.errors.length > 8 ? `\n… et ${result.errors.length - 8} autre(s) erreur(s).` : ''}`);
                 return;
             }
             if (!result.athletes.length) {
@@ -368,13 +385,16 @@ var Wod;
                 return;
             }
             const doublons = result.duplicates ? `\n${result.duplicates} déjà inscrit(s) seront ignorés.` : '';
-            if (!confirm(`Ajouter ${result.athletes.length} inscription(s) à « ${state.title} » ?${doublons}`))
-                return;
-            state.athletes.push(...result.athletes);
-            if (!save(false, `import de ${result.athletes.length} inscription(s)`))
-                return;
-            render();
-            toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
+            const target = state;
+            ask(`Ajouter ${result.athletes.length} inscription(s) ?`, `À « ${state.title} ».${doublons}`, () => {
+                if (state !== target)
+                    return;
+                state.athletes.push(...result.athletes);
+                if (!save(false, `import de ${result.athletes.length} inscription(s)`))
+                    return;
+                render();
+                toast(`${result.athletes.length} inscription(s) ajoutée(s).`);
+            }, 'Importer');
         }
         catch (error) {
             toast(error instanceof Error ? error.message : 'Impossible de lire ce fichier.');
@@ -596,18 +616,23 @@ var Wod;
         if (!w || !a)
             return;
         const scores = state.scores[w.id] ??= {};
-        if (forfeit) {
-            const had = Wod.hasScore(w, scores[a.id]);
-            if (!confirm(`Confirmer le forfait de ${Wod.athleteLabel(a)} sur ${w.name} ?\n\n${had ? `Le score enregistré (${Wod.scoreText(w, scores[a.id])}) sera retiré. ` : ''}${state.method === 'places' ? 'Sur ce WOD : dernière place de la catégorie.' : 'Sur ce WOD : 0 point.'}`))
-                return;
-            scores[a.id] = { forfeit: true };
+        const apply = () => {
+            if (forfeit)
+                scores[a.id] = { forfeit: true };
+            else
+                delete scores[a.id];
+            if (save(false, `${forfeit ? 'forfait' : 'forfait annulé'} de ${Wod.athleteLabel(a)} sur ${w.name}`)) {
+                render();
+                toast(forfeit ? 'Forfait enregistré.' : 'Forfait annulé : score à saisir.');
+            }
+        };
+        if (!forfeit) {
+            apply();
+            return;
         }
-        else
-            delete scores[a.id];
-        if (save(false, `${forfeit ? 'forfait' : 'forfait annulé'} de ${Wod.athleteLabel(a)} sur ${w.name}`)) {
-            render();
-            toast(forfeit ? 'Forfait enregistré.' : 'Forfait annulé : score à saisir.');
-        }
+        const had = Wod.hasScore(w, scores[a.id]);
+        ask(`Confirmer le forfait de ${Wod.athleteLabel(a)} sur ${w.name} ?`, `${had ? `Le score enregistré (${Wod.scoreText(w, scores[a.id])}) sera retiré. ` : ''}${state.method === 'places' ? 'Sur ce WOD : dernière place de la catégorie.' : 'Sur ce WOD : 0 point.'}`, () => { if (state.scores[w.id] === scores)
+            apply(); }, 'Confirmer le forfait');
     }
     function saveScore(input) {
         const w = currentWod();
@@ -703,13 +728,17 @@ var Wod;
             toast('Aucun participant classé à imprimer.');
             return;
         }
-        if (Wod.pendingScores(state, undefined, phase) && !confirm(`Classement provisoire : des scores restent à saisir, les places imprimées peuvent encore changer.\n\nImprimer quand même ${list.length} diplôme(s) ?`))
-            return;
-        Diplome.print(list.map(({ r, of }) => ({
-            names: r.athlete.format === 'DUO' ? [r.athlete.name1, r.athlete.name2] : [r.athlete.name1], event: state.title, date: state.date, group: Wod.group(r.athlete),
-            phase: label, rank: r.rank, of, resultLabel: state.method === 'places' ? 'Total des places' : 'Points', result: state.method === 'places' ? String(r.total) : `${r.total} pts`,
-            details: wods.map(w => { const p = r.places[w.id] ?? null, sc = state.scores[w.id]?.[r.athlete.id]; return { label: w.name, value: p === null ? Wod.STATUS_LABELS[Wod.scoreStatus(w, sc)] : Wod.scoreText(w, sc), place: p === null ? '—' : Diplome.place(p) }; }),
-        })));
+        const go = () => {
+            Diplome.print(list.map(({ r, of }) => ({
+                names: r.athlete.format === 'DUO' ? [r.athlete.name1, r.athlete.name2] : [r.athlete.name1], event: state.title, date: state.date, group: Wod.group(r.athlete),
+                phase: label, rank: r.rank, of, resultLabel: state.method === 'places' ? 'Total des places' : 'Points', result: state.method === 'places' ? String(r.total) : `${r.total} pts`,
+                details: wods.map(w => { const p = r.places[w.id] ?? null, sc = state.scores[w.id]?.[r.athlete.id]; return { label: w.name, value: p === null ? Wod.STATUS_LABELS[Wod.scoreStatus(w, sc)] : Wod.scoreText(w, sc), place: p === null ? '—' : Diplome.place(p) }; }),
+            })));
+        };
+        if (Wod.pendingScores(state, undefined, phase))
+            ask('Classement provisoire', `Des scores restent à saisir : les places imprimées peuvent encore changer. Imprimer quand même ${list.length} diplôme(s) ?`, go, 'Imprimer');
+        else
+            go();
     }
     function renderRanking() {
         const levels = levelsUsed();
@@ -773,16 +802,23 @@ var Wod;
         if (!cat)
             return;
         const current = state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length;
-        const text = prompt(`Combien de qualifiés pour la Finale en ${cat} ?\n\nLes premiers du classement des qualifs sont qualifiés (ex æquo compris). Vous pourrez ensuite en ajouter ou en retirer un par un.`, String(current || 3));
-        if (text === null)
-            return;
-        const n = Number(text.trim());
-        if (!Number.isInteger(n) || n < 0) {
+        const form = $('qualify-form');
+        form.dataset.cat = cat;
+        $('qualify-title').textContent = `Qualifiés pour la Finale en ${cat}`;
+        form.elements.namedItem('count').value = String(current || 3);
+        $('qualify-dialog').showModal();
+    }
+    function saveQualify(event) {
+        event.preventDefault();
+        const form = event.target, cat = form.dataset.cat ?? '';
+        const n = Number(form.elements.namedItem('count').value.trim());
+        if (!cat || !Number.isInteger(n) || n < 0) {
             toast('Nombre entier attendu.');
             return;
         }
         state.finalists = Wod.qualifyTop(state, cat, n);
         if (save(false, `qualification pour la Finale en ${cat}`)) {
+            $('qualify-dialog').close();
             render();
             toast(`${state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length} qualifié(s) en ${cat}.`);
         }
@@ -792,12 +828,17 @@ var Wod;
         if (!a)
             return;
         const has = state.workouts.some(w => w.phase === 'final' && state.scores[w.id]?.[id]);
-        if (!on && has && !confirm(`${Wod.athleteLabel(a)} a déjà des scores en Finale. Le retirer quand même ? Ses scores de finale seront gardés mais ne compteront plus.`))
-            return;
-        const list = (state.finalists ?? []).filter(x => x !== id);
-        state.finalists = on ? [...list, id] : list;
-        if (save(false, `${on ? 'qualification' : 'retrait de la Finale'} de ${Wod.athleteLabel(a)}`))
-            render();
+        const apply = () => {
+            const list = (state.finalists ?? []).filter(x => x !== id);
+            state.finalists = on ? [...list, id] : list;
+            if (save(false, `${on ? 'qualification' : 'retrait de la Finale'} de ${Wod.athleteLabel(a)}`))
+                render();
+        };
+        if (!on && has)
+            ask(`Retirer ${Wod.athleteLabel(a)} de la Finale ?`, 'Ses scores de finale seront gardés mais ne compteront plus.', () => { if (state.athletes.includes(a))
+                apply(); }, 'Retirer');
+        else
+            apply();
     }
     let entryFormat = '';
     let gender1 = '', gender2 = '';
@@ -865,31 +906,40 @@ var Wod;
         const athlete = { id: old?.id ?? uid(), bib: old?.bib ?? Wod.nextBib(state), format: entryFormat, name1: v('name1'), name2: entryFormat === 'DUO' ? v('name2') : '', gender1, gender2: entryFormat === 'DUO' ? gender2 : '', ...(state.levels.length ? { level: entryLevel } : {}) };
         // Changer le niveau ou la catégorie d’un athlète déjà noté le déplace dans un autre classement : confirmé.
         const scored = old && state.workouts.some(w => Wod.hasScore(w, state.scores[w.id]?.[old.id]));
-        if (old && scored && Wod.group(old) !== Wod.group(athlete) && !confirm(`${Wod.athleteLabel(old)} a déjà des scores.\n\nIl passera de « ${Wod.group(old)} » à « ${Wod.group(athlete)} », avec ses scores. Continuer ?`))
-            return;
-        const i = state.athletes.findIndex(a => a.id === athlete.id);
-        if (i >= 0)
-            state.athletes[i] = athlete;
+        const apply = () => {
+            const i = state.athletes.findIndex(a => a.id === athlete.id);
+            if (i >= 0)
+                state.athletes[i] = athlete;
+            else
+                state.athletes.push(athlete);
+            if (!save(false, `${i >= 0 ? 'modification' : 'ajout'} de ${Wod.athleteLabel(athlete)}`)) {
+                $('entry-error').textContent = 'Non enregistré : réessayez.';
+                return;
+            }
+            $('entry-dialog').close();
+            render();
+            toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
+        };
+        if (old && scored && Wod.group(old) !== Wod.group(athlete))
+            ask('Changer de catégorie ?', `${Wod.athleteLabel(old)} a déjà des scores. Il passera de « ${Wod.group(old)} » à « ${Wod.group(athlete)} », avec ses scores.`, () => { if (state.athletes.includes(old))
+                apply(); }, 'Continuer');
         else
-            state.athletes.push(athlete);
-        if (!save(false, `${i >= 0 ? 'modification' : 'ajout'} de ${Wod.athleteLabel(athlete)}`)) {
-            $('entry-error').textContent = 'Non enregistré : réessayez.';
-            return;
-        }
-        $('entry-dialog').close();
-        render();
-        toast(i >= 0 ? 'Inscription modifiée.' : 'Participant ajouté.');
+            apply();
     }
     function deleteAthlete(a) {
-        if (!a || !confirm(`Supprimer ${Wod.athleteLabel(a)} et ses scores ?`))
-            return false;
-        state.athletes = state.athletes.filter(x => x !== a);
-        for (const s of Object.values(state.scores))
-            delete s[a.id];
-        if (!save(false, `suppression de ${Wod.athleteLabel(a)}`))
-            return false;
-        render();
-        return true;
+        if (!a)
+            return;
+        ask('Supprimer cette inscription ?', `${Wod.athleteLabel(a)} et ses scores seront supprimés. La commande Annuler permet de revenir en arrière.`, () => {
+            if (!state.athletes.includes(a))
+                return;
+            state.athletes = state.athletes.filter(x => x !== a);
+            for (const s of Object.values(state.scores))
+                delete s[a.id];
+            if (!save(false, `suppression de ${Wod.athleteLabel(a)}`))
+                return;
+            $('entry-dialog').close();
+            render();
+        }, 'Supprimer');
     }
     const HELP = {
         time: 'For Time : on saisit le temps. Si un athlète n’a pas fini avant le time cap, on saisit ses reps : il est classé après tous ceux qui ont fini.',
@@ -922,7 +972,7 @@ var Wod;
         $('workout-dialog').showModal();
         f.name.focus();
     }
-    function submitWorkout(event) {
+    function submitWorkout(event, confirmed = false) {
         event.preventDefault();
         const data = new FormData(event.target);
         const v = (k) => String(data.get(k) ?? '').trim();
@@ -934,8 +984,10 @@ var Wod;
             return;
         }
         const old = state.workouts.find(w => w.id === id);
-        if (old && old.type !== type && Object.keys(state.scores[id] ?? {}).length && !confirm('Changer le type efface les scores déjà saisis pour ce WOD. Continuer ?'))
+        if (old && old.type !== type && Object.keys(state.scores[id] ?? {}).length && !confirmed) {
+            ask('Changer le type du WOD ?', 'Les scores déjà saisis pour ce WOD seront effacés. La commande Annuler permet de revenir en arrière.', () => submitWorkout(event, true), 'Changer le type');
             return;
+        }
         const workout = { id, name: v('name'), description: v('description'), type, capMinutes: n('capMinutes'), totalReps: type === 'time' ? n('totalReps') : null, repsPerRound: type === 'amrap' ? n('repsPerRound') : null, ...(v('phase') === 'final' ? { phase: 'final' } : {}) };
         // Cap, reps au total… : un score déjà saisi qui ne respecterait plus les réglages bloque la modification.
         const conflicts = old && old.type === type ? Wod.workoutConflicts(state, workout) : [];
@@ -996,7 +1048,7 @@ var Wod;
         if (ask === !buttons.innerHTML)
             buttons.innerHTML = ask ? levels.map(l => `<label><input type="radio" name="assignLevel" value="${esc(l)}" required><span>${esc(l)}<small>${esc(LEVEL_HELP[l] ?? '')}</small></span></label>`).join('') : '';
     }
-    function submitEvent(event) {
+    function submitEvent(event, confirmed = false) {
         event.preventDefault();
         const data = new FormData(event.target);
         const v = (k) => String(data.get(k) ?? '').trim();
@@ -1014,6 +1066,12 @@ var Wod;
             $('session-error').textContent = `Des inscriptions ${format === 'SOLO' ? 'Duo' : 'Solo'} existent déjà : gardez Solo + Duo ou supprimez-les d’abord.`;
             return;
         }
+        // Passer à un seul niveau mélange Scaled et RX : confirmé avant toute modification.
+        const levels = Wod.LEVEL_PRESETS[v('levels')] ?? [];
+        if (existing && !confirmed && !Wod.hasAnyScore(existing) && existing.levels.length && !levels.length && existing.athletes.length) {
+            ask('Passer à un seul niveau ?', `Les ${existing.athletes.length} inscrit(s) Scaled et RX seront classés ensemble.`, () => submitEvent(event, true), 'Continuer');
+            return;
+        }
         const target = existing ?? Wod.emptyCompetition(uid(), '', '', format);
         target.title = v('title') || 'Soundcrossing WOD';
         target.date = v('date');
@@ -1021,15 +1079,12 @@ var Wod;
         if (!(existing && Wod.hasAnyScore(existing)))
             target.method = v('method') === 'points' ? 'points' : 'places';
         // Changer de niveaux : « un seul niveau » les retire.
-        const levels = Wod.LEVEL_PRESETS[v('levels')] ?? [];
         if (levels.join() !== target.levels.join() && !(existing && Wod.hasAnyScore(existing))) {
             const assign = v('assignLevel');
             if (target.athletes.length && levels.length && !target.levels.length && !levels.includes(assign)) {
                 $('session-error').textContent = 'Choisissez le niveau des participants déjà inscrits.';
                 return;
             }
-            if (target.athletes.length && !levels.length && !confirm(`Passer à un seul niveau ?\n\nLes ${target.athletes.length} inscrit(s) Scaled et RX seront classés ensemble.`))
-                return;
             for (const a of target.athletes) {
                 const level = levels.length && !target.levels.length ? assign : Wod.remapLevel(a.level, levels);
                 if (level)
@@ -1054,16 +1109,18 @@ var Wod;
         toast(existing ? 'Événement enregistré.' : 'Événement créé. Ajoutez les participants.');
     }
     function deleteEvent() {
-        if (!confirm(`Supprimer l’événement « ${state.title} », ses inscriptions, ses WOD et ses scores ?`))
-            return;
-        const title = state.title;
-        store.events = store.events.filter(e => e.id !== state.id);
-        selectEvent('');
-        if (!save(false, `suppression de l’événement ${title}`))
-            return;
-        $('session-dialog').close();
-        render();
-        toast('Événement supprimé.');
+        const target = state, title = state.title;
+        ask('Supprimer cet événement ?', `« ${title} », ses inscriptions, ses WOD et ses scores seront supprimés. La commande Annuler permet de revenir en arrière.`, () => {
+            if (!store.events.includes(target))
+                return;
+            store.events = store.events.filter(e => e !== target);
+            selectEvent('');
+            if (!save(false, `suppression de l’événement ${title}`))
+                return;
+            $('session-dialog').close();
+            render();
+            toast('Événement supprimé.');
+        }, 'Supprimer');
     }
     function exportExcel() {
         if (!store.events.length) {
@@ -1111,17 +1168,19 @@ var Wod;
         if (!events.length)
             return;
         const one = events.length === 1;
-        if (!confirm(`${one ? `Supprimer l’entraînement « ${events[0].title} », ses inscriptions et ses scores fictifs ?` : `Supprimer les ${events.length} événements d’entraînement, leurs inscriptions et leurs scores fictifs ?`}\n\nVos vrais événements ne sont pas touchés.`))
-            return;
-        store.events = store.events.filter(e => !events.includes(e));
-        if (events.some(e => e.id === state.id))
-            selectEvent('');
-        rememberEvent();
-        if (!save(false, one ? `suppression de l’entraînement ${events[0].title}` : 'suppression des entraînements'))
-            return;
-        $('settings-dialog').close();
-        render();
-        toast(one ? 'Entraînement supprimé.' : 'Entraînements supprimés.');
+        ask(one ? 'Supprimer cet entraînement ?' : `Supprimer les ${events.length} entraînements ?`, `${one ? `« ${events[0].title} », ses inscriptions et ses scores fictifs seront supprimés.` : 'Tous les événements d’entraînement, leurs inscriptions et leurs scores fictifs seront supprimés.'} Vos vrais événements ne sont pas touchés. La commande Annuler permet de revenir en arrière.`, () => {
+            if (!events.every(e => store.events.includes(e)))
+                return;
+            store.events = store.events.filter(e => !events.includes(e));
+            if (events.some(e => e.id === state.id))
+                selectEvent('');
+            rememberEvent();
+            if (!save(false, one ? `suppression de l’entraînement ${events[0].title}` : 'suppression des entraînements'))
+                return;
+            $('settings-dialog').close();
+            render();
+            toast(one ? 'Entraînement supprimé.' : 'Entraînements supprimés.');
+        }, 'Supprimer');
     }
     function bind() {
         Saisie.install();
@@ -1167,12 +1226,10 @@ var Wod;
             }
             else if (d.deleteWorkout) {
                 const w = state.workouts.find(x => x.id === d.deleteWorkout);
-                if (w && confirm(`Supprimer ${w.name} et tous ses scores ?`)) {
-                    state.workouts = state.workouts.filter(x => x !== w);
-                    delete state.scores[w.id];
-                    if (save(false, `suppression du WOD ${w.name}`))
-                        render();
-                }
+                if (w)
+                    ask(`Supprimer ${w.name} ?`, 'Le WOD et tous ses scores seront supprimés. La commande Annuler permet de revenir en arrière.', () => { if (!state.workouts.includes(w))
+                        return; state.workouts = state.workouts.filter(x => x !== w); delete state.scores[w.id]; if (save(false, `suppression du WOD ${w.name}`))
+                        render(); }, 'Supprimer');
             }
             else if (d.wod) {
                 selectedWod = d.wod;
@@ -1265,8 +1322,7 @@ var Wod;
             all[all.indexOf(i) + 1]?.focus();
         });
         $('entry-form').addEventListener('submit', submitAthlete);
-        $('delete-entry').addEventListener('click', () => { const id = $('entry-form').elements.namedItem('id').value; if (deleteAthlete(state.athletes.find(a => a.id === id)))
-            $('entry-dialog').close(); });
+        $('delete-entry').addEventListener('click', () => { const id = $('entry-form').elements.namedItem('id').value; deleteAthlete(state.athletes.find(a => a.id === id)); });
         $('workout-form').addEventListener('submit', submitWorkout);
         $('workout-form').addEventListener('change', syncWorkoutForm);
         $('session-form').addEventListener('submit', submitEvent);
@@ -1305,21 +1361,21 @@ var Wod;
                 // Mêmes règles qu’à la saisie : temps nul, au-delà du cap, temps et reps ensemble… sont refusés.
                 const imported = Wod.validateStore(JSON.parse(await file.text()), true);
                 const athletes = imported.events.reduce((n, ev) => n + ev.athletes.length, 0);
-                if (!confirm(`Restaurer cette sauvegarde (${imported.events.length} événement(s), ${athletes} inscription(s)) ?\n\nLes données WOD actuelles seront remplacées. Une sauvegarde des données actuelles sera téléchargée avant.`))
-                    return;
-                if (store.events.length)
-                    exportBackup();
-                store = imported;
-                selectEvent(imported.selectedId);
-                rememberEvent();
-                if (!save(true))
-                    return;
-                render();
-                $('settings-dialog').close();
-                toast('Sauvegarde restaurée.');
+                ask('Restaurer cette sauvegarde ?', `Elle contient ${imported.events.length} événement(s) et ${athletes} inscription(s). Les données WOD actuelles seront remplacées. Une sauvegarde des données actuelles sera téléchargée avant le remplacement.`, () => {
+                    if (store.events.length)
+                        exportBackup();
+                    store = imported;
+                    selectEvent(imported.selectedId);
+                    rememberEvent();
+                    if (!save(true))
+                        return;
+                    render();
+                    $('settings-dialog').close();
+                    toast('Sauvegarde restaurée.');
+                }, 'Sauvegarder et restaurer');
             }
             catch (error) {
-                alert(error.message);
+                notice('Sauvegarde refusée', error.message);
             }
         });
         $('import-file').addEventListener('change', e => { const input = e.target, file = input.files?.[0]; input.value = ''; if (file)
@@ -1332,19 +1388,23 @@ var Wod;
         $('training-form').addEventListener('input', trainingSummary);
         $('training-delete').addEventListener('click', () => deleteTrainings([state.id]));
         $('training-delete-all').addEventListener('click', () => deleteTrainings(store.events.map(e => e.id)));
-        $('reset-button').addEventListener('click', () => {
-            if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?\n\nUne sauvegarde des données actuelles sera téléchargée avant.'))
-                return;
-            if (store.events.length)
-                exportBackup();
+        // Reset : même fenêtre que l’Hyrox (sauvegarder puis tout effacer, ou tout effacer sans sauvegarder).
+        const resetAll = () => {
+            $('reset-dialog').close();
             store = Wod.emptyStore();
             selectEvent('');
             if (!save(false, 'remise à zéro'))
                 return;
             view = 'athletes';
             render();
-            $('settings-dialog').close();
-        });
+            toast('Tout est effacé. « Annuler » permet encore de revenir en arrière.');
+        };
+        $('reset-button').addEventListener('click', () => { $('settings-dialog').close(); $('reset-dialog').showModal(); $('reset-save').focus(); });
+        $('reset-save').addEventListener('click', () => { exportBackup(); resetAll(); });
+        $('reset-now').addEventListener('click', resetAll);
+        $('confirm-action').addEventListener('click', () => { const action = confirmation; confirmation = null; $('confirm-dialog').close(); action?.(); });
+        $('confirm-dialog').addEventListener('close', () => { confirmation = null; });
+        $('qualify-form').addEventListener('submit', e => saveQualify(e));
     }
     function rememberEvent() { try {
         localStorage.setItem(EVENT_KEY, state.id);

@@ -80,3 +80,4 @@
   .jury-sheet>footer{display:flex;gap:6mm;align-items:flex-end;margin-top:auto}
   .sheet-sign{flex:1;border-top:1px solid #555;padding-top:1mm;margin-top:7mm;font-size:8.5pt;color:#555}
 }
+#confirm-description,#notice-description{white-space:pre-line}
