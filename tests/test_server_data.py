@@ -103,6 +103,48 @@ class ServerDataTest(unittest.TestCase):
         self.assertFalse((Path(self.data.name) / "session.json").exists())
 
 
+    def stop(self, headers):
+        request = Request(f"{self.url}/stop", data=b"", method="POST", headers=headers)
+        try:
+            return urlopen(request, timeout=5).status
+        except HTTPError as error:
+            return error.code
+
+    def test_only_a_launch_from_the_same_folder_can_stop_the_server(self):
+        self.assertEqual(self.stop({"X-Identity": "autre"}), 403)
+        self.assertEqual(self.stop({"X-Identity": IDENTITY, "Origin": self.url}), 403)
+        self.assertIsNone(self.server.poll())
+        self.assertEqual(self.stop({"X-Identity": IDENTITY}), 204)
+        self.assertEqual(self.server.wait(timeout=5), 0)
+
+    def launch(self, code=None):
+        """Nouveau lancement du même dossier ; code : version simulée de server.py (mise à jour arrivée entre-temps)."""
+        script = ("import sys; sys.argv = ['server.py', '--no-open', '--no-update']; sys.path.insert(0, %r)\n"
+                  "import server\n" % str(ROOT)) + (f"server.CODE = {code!r}\n" if code else "") + "server.main()"
+        env = {**os.environ, "SOUNDCROSSING_DATA": self.data.name, "SOUNDCROSSING_PORT": self.url.rsplit(":", 1)[1]}
+        return subprocess.Popen([sys.executable, "-c", script], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def test_same_version_launched_again_keeps_the_running_server(self):
+        self.assertEqual(self.launch().wait(timeout=10), 0)
+        self.assertIsNone(self.server.poll())
+
+    def test_launch_after_an_update_replaces_the_previous_version(self):
+        newer = self.launch("nouvelle-version")
+        try:
+            self.assertEqual(self.server.wait(timeout=10), 0)  # l’ancien serveur s’est arrêté seul
+            for _ in range(50):
+                try:
+                    info = json.load(urlopen(f"{self.url}/health", timeout=1))
+                    break
+                except OSError:
+                    time.sleep(0.1)
+            self.assertEqual(info["code"], "nouvelle-version")
+            self.assertIsNone(newer.poll())
+        finally:
+            newer.terminate()
+            newer.wait()
+
+
 class UpdateInstallTest(unittest.TestCase):
     """La mise à jour remplace tout ou rien, et garde la version précédente."""
 
