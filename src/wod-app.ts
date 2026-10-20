@@ -747,13 +747,6 @@ namespace Wod {
     rememberEvent(); if (!save(false, one ? `suppression de l’entraînement ${events[0]!.title}` : 'suppression des entraînements')) return;
     $<HTMLDialogElement>('settings-dialog').close(); render(); toast(one ? 'Entraînement supprimé.' : 'Entraînements supprimés.');
   }
-  function loadDemo(): void {
-    const example = demo(today());
-    example.id = `exemple-${uid()}`;
-    store.events.push(example); selectEvent(example.id); rememberEvent(); if (!save(false, 'ajout de l’exemple')) return;
-    view = 'ranking'; rankingTab = 'general'; render();
-    $<HTMLDialogElement>('settings-dialog').close(); toast('Exemple chargé : 10 inscrits et 3 WOD. Regardez chaque onglet.');
-  }
 
   function bind(): void {
     Saisie.install();
@@ -844,9 +837,8 @@ namespace Wod {
       } catch (error) { alert((error as Error).message); }
     });
     $<HTMLInputElement>('import-file').addEventListener('change', e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; input.value = ''; if (file) void importFile(file); });
-    $('no-event-demo').addEventListener('click', loadDemo);
+    $('no-event-demo').addEventListener('click', openTraining);
     $('undo-button').addEventListener('click', undo); $('no-event-undo').addEventListener('click', undo);
-    $('demo-settings').addEventListener('click', loadDemo);
     $('training-create').addEventListener('click', openTraining);
     $('training-form').addEventListener('submit', loadTraining);
     $('training-form').addEventListener('input', trainingSummary);
