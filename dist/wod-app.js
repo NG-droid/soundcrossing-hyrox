@@ -585,6 +585,26 @@ var Wod;
         if (document.fullscreenElement)
             void document.exitFullscreen().catch(() => undefined);
     }
+    // Diplômes du classement affiché (général, qualifs ou Finale) : toutes les catégories, un par participant qui a au moins un score.
+    function printDiplomas() {
+        const phase = rankingTab === 'final' ? 'final' : 'qualif', wods = Wod.phaseWorkouts(state, phase);
+        const label = phase === 'final' ? 'Finale' : Wod.hasFinal(state) ? 'Qualifications' : 'Classement général';
+        const list = Wod.usedGroups(state).flatMap(g => {
+            const ranking = Wod.generalRanking(state, g, phase);
+            return ranking.filter(r => found(r.athlete) && wods.some(w => r.places[w.id] !== null)).map(r => ({ r, of: ranking.length }));
+        });
+        if (!list.length) {
+            toast('Aucun participant classé à imprimer.');
+            return;
+        }
+        if (Wod.pendingScores(state, undefined, phase) && !confirm(`Classement provisoire : des scores restent à saisir, les places imprimées peuvent encore changer.\n\nImprimer quand même ${list.length} diplôme(s) ?`))
+            return;
+        Diplome.print(list.map(({ r, of }) => ({
+            names: r.athlete.format === 'DUO' ? [r.athlete.name1, r.athlete.name2] : [r.athlete.name1], event: state.title, date: state.date, group: Wod.group(r.athlete),
+            phase: label, rank: r.rank, of, resultLabel: state.method === 'places' ? 'Total des places' : 'Points', result: state.method === 'places' ? String(r.total) : `${r.total} pts`,
+            details: wods.map(w => { const p = r.places[w.id] ?? null, sc = state.scores[w.id]?.[r.athlete.id]; return { label: w.name, value: p === null ? Wod.STATUS_LABELS[Wod.scoreStatus(w, sc)] : Wod.scoreText(w, sc), place: p === null ? '—' : Diplome.place(p) }; }),
+        })));
+    }
     function renderRanking() {
         const levels = levelsUsed();
         if (!levels.includes(rankingLevel))
@@ -619,7 +639,7 @@ var Wod;
             const qualified = state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length;
             const note = phase === 'final' ? `Points remis à zéro : seuls les WOD de finale comptent. Égalité : meilleure place sur le dernier WOD de finale, puis classement des qualifs.${qualified ? '' : ' Aucun qualifié dans cette catégorie : qualifiez-les dans « Classement qualifs ».'}`
                 : `${Wod.rulesText(state).slice(0, 3).join(' ')}${final ? ` ${qualified} qualifié(s) pour la Finale.` : ''}`;
-            heading(`${name} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${note}`, phase === 'qualif' && final ? '<button class="button primary" data-action="qualify">Qualifier pour la Finale</button>' : '');
+            heading(`${name} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${note}`, `<button class="button" data-action="diplomas" title="Un diplôme par participant classé, toutes catégories (suivant la recherche), à imprimer ou enregistrer en PDF">${PRINTER}Diplômes</button>${phase === 'qualif' && final ? '<button class="button primary" data-action="qualify">Qualifier pour la Finale</button>' : ''}`);
             const cell = (w, r) => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${Wod.STATUS_LABELS[Wod.scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
             podiumFooter(ranking.length, pending);
             const pick = (a) => `<td>${Wod.isFinalist(state, a) ? `<button class="button compact finalist-on" data-unqualify="${a.id}" title="Retirer de la Finale">✓ Qualifié</button>` : `<button class="button compact" data-qualify-one="${a.id}">Qualifier</button>`}</td>`;
@@ -1025,6 +1045,8 @@ var Wod;
                 printSheets(false);
             else if (d.action === 'print-blank')
                 printSheets(true);
+            else if (d.action === 'diplomas')
+                printDiplomas();
             else if (d.action === 'only-todo') {
                 onlyTodo = !onlyTodo;
                 render();

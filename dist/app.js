@@ -371,6 +371,7 @@ var PaceApp;
         $('arrival-heading').hidden = $('total-heading').hidden = view === 'participants';
         $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
         $('show-podium-button').hidden = view === 'participants' || view === 'live';
+        $('diploma-button').hidden = view !== 'results';
         $('rank-heading').textContent = finalResults ? 'RANG' : 'RANG PROVISOIRE';
         $('sort').disabled = view === 'results';
         $('sort').hidden = view === 'results';
@@ -838,6 +839,27 @@ var PaceApp;
         }).join('');
         $('podium-choice-dialog').showModal();
     }
+    // Diplômes : un par participant classé affiché (filtres et recherche), avec sa place dans sa catégorie et son temps.
+    function printDiplomas() {
+        const race = currentRace();
+        if (!race)
+            return;
+        const groups = Pace.eventRankingGroups(race, raceEntries()).map(g => Pace.rankingFor(state.session, g.format, race.date, g.level));
+        const placed = new Map(groups.flatMap(list => list.map(r => [r.entry.id, { rank: r.rank, of: list.length }])));
+        const list = filtered().flatMap(e => { const p = placed.get(e.id); return p && e.durationMs !== null ? [{ e, ...p }] : []; });
+        if (!list.length) {
+            toast('Aucun participant classé à imprimer avec ces filtres.');
+            return;
+        }
+        const go = () => Diplome.print(list.map(({ e, rank, of }) => ({
+            names: e.format === 'DUO' ? [e.name1, e.name2] : [e.name1], event: race.title, date: race.date, group: Pace.groupLabel(e.level, Pace.formatLabel(e)),
+            phase: 'Classement', rank, of, resultLabel: 'Temps', result: clock(e.durationMs)
+        })));
+        if (Pace.eventResultsFinal(state.session, race))
+            go();
+        else
+            ask('Classement provisoire', `Des inscriptions restent à compléter : les places imprimées peuvent encore changer. Imprimer quand même ${list.length} diplôme(s) ?`, go, 'Imprimer');
+    }
     function formatName(format) { return formatOptions.find(option => option.key === format).label; }
     function openPodium(raceId, format, level = '') {
         try {
@@ -1297,6 +1319,7 @@ var PaceApp;
     $('export-button').addEventListener('click', () => exportExcel());
     $('csv-final-button').addEventListener('click', exportFinalCSV);
     $('show-podium-button').addEventListener('click', openPodiumChooser);
+    $('diploma-button').addEventListener('click', printDiplomas);
     $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
     $('backup-button').addEventListener('click', exportBackup);
     $('restore-button').addEventListener('click', () => $('restore-file').click());
