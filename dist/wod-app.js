@@ -671,8 +671,9 @@ var Wod;
         if (rankingTab !== 'general' && !(final && rankingTab === 'final') && !state.workouts.some(w => w.id === rankingTab))
             rankingTab = 'general';
         const sum = state.method === 'places' ? 'Somme des places' : 'Total des points';
+        // Ordre du déroulé : qualifs et leurs WOD, puis les WOD de finale, et le classement de la Finale en dernier.
         wodPicker([{ key: 'general', label: final ? 'Classement qualifs' : 'Classement général', sub: sum }, ...Wod.phaseWorkouts(state, 'qualif').map(wodTab),
-            ...(final ? [{ key: 'final', label: 'Finale', sub: 'Qualifiés · grand gagnant' }, ...Wod.phaseWorkouts(state, 'final').map(wodTab)] : [])], rankingTab, 'rank-tab');
+            ...(final ? [...Wod.phaseWorkouts(state, 'final').map(w => ({ ...wodTab(w), sub: `Finale · ${wodTab(w).sub}` })), { key: 'final', label: 'Classement Finale', sub: 'Qualifiés · grand gagnant' }] : [])], rankingTab, 'rank-tab');
         chips(levels.length > 1 ? 'chips3' : 'chips2', cats.map(c => groupChip(c, rankingLevel)), rankingCat, 'rank-cat');
         if (!rankingCat) {
             heading('Classements', '');
