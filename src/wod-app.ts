@@ -27,6 +27,8 @@ namespace Wod {
   let rankingLevel = '';
   let entryLevel = '';
   let onlyFinalists = false;
+  let athleteLevel = '';
+  let athleteCat = 'all';
 
   // Mêmes protections que l’app Hyrox : on n’écrase jamais une version plus récente d’une autre fenêtre,
   // l’écran n’affiche une modification qu’une fois enregistrée, et la version précédente reste en secours.
@@ -220,8 +222,8 @@ namespace Wod {
   function heading(title: string, description: string, actions = ''): void {
     $('view-title').textContent = title; $('view-description').textContent = description; $('view-actions').innerHTML = actions;
   }
-  function chips(target: string, items: { key: string; label: string; css?: string }[], active: string, attr: string): void {
-    $(target).innerHTML = items.map(i => `<button class="format-chip${i.css ? ` ${i.css}` : ''}${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}</button>`).join('');
+  function chips(target: string, items: { key: string; label: string; css?: string; count?: number }[], active: string, attr: string): void {
+    $(target).innerHTML = items.map(i => `<button class="format-chip${i.css ? ` ${i.css}` : ''}${i.key === active ? ' active' : ''}" data-${attr}="${esc(i.key)}">${esc(i.label)}${i.count === undefined ? '' : `<small>${i.count}</small>`}</button>`).join('');
   }
 
   function badge(a: Athlete): string { const c = category(a); return `<span class="format-badge fmt-${c}">${esc(categoryLabel(c))}</span>`; }
@@ -246,7 +248,15 @@ namespace Wod {
     const finalists = state.athletes.filter(a => isFinalist(state, a)).length;
     if (!finalists) onlyFinalists = false;
     if (finalists) $('chips').innerHTML = `<button class="format-chip${onlyFinalists ? ' active' : ''}" data-action="only-finalists" aria-pressed="${onlyFinalists}">Finalistes seulement (${finalists})</button>`;
-    const rows = state.athletes.filter(a => (!onlyFinalists || isFinalist(state, a)) && found(a)).map(a =>
+    // Filtres niveau et catégorie, comme les Participants Hyrox (mêmes puces, mêmes couleurs, avec le nombre d’inscrits).
+    const levels = levelsUsed();
+    if (!levels.includes(athleteLevel)) athleteLevel = '';
+    if (levels.length > 1) chips('chips2', [{ key: '', label: 'Tous les niveaux', count: state.athletes.length }, ...levels.map(l => ({ ...levelChip(l), count: state.athletes.filter(a => a.level === l).length }))], athleteLevel, 'athlete-level');
+    const inLevel = state.athletes.filter(a => !athleteLevel || a.level === athleteLevel);
+    const cats = CATEGORIES.filter(c => inLevel.some(a => category(a) === c));
+    if (!cats.includes(athleteCat as Category)) athleteCat = 'all';
+    if (cats.length > 1) chips('chips3', [{ key: 'all', label: 'Tout le monde', count: inLevel.length }, ...cats.map(c => ({ key: c, label: categoryLabel(c), css: `chip-fmt-${c}`, count: inLevel.filter(a => category(a) === c).length }))], athleteCat, 'athlete-cat');
+    const rows = inLevel.filter(a => (athleteCat === 'all' || category(a) === athleteCat) && (!onlyFinalists || isFinalist(state, a)) && found(a)).map(a =>
       `<tr><td><strong>${esc(athleteLabel(a))}</strong>${isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
     setTable(['PARTICIPANT / DUO', 'CATÉGORIE', 'ACTIONS'], rows, 'Aucun participant pour l’instant.');
   }
@@ -792,6 +802,8 @@ namespace Wod {
       else if (d.scoreGroup) { scoreGroup = d.scoreGroup; render(); }
       else if (d.scoreLevel !== undefined && t.closest('#chips2')) { scoreLevel = d.scoreLevel; scoreGroup = 'all'; render(); }
       else if (d.rankLevel) { rankingLevel = d.rankLevel; render(); }
+      else if (d.athleteLevel !== undefined && t.closest('#chips2')) { athleteLevel = d.athleteLevel; athleteCat = 'all'; render(); }
+      else if (d.athleteCat) { athleteCat = d.athleteCat; render(); }
       else if (d.level !== undefined && t.closest('#entry-form')) { entryLevel = d.level; $('entry-error').textContent = ''; syncEntryForm(); }
     });
     $('table-body').addEventListener('input', e => {
