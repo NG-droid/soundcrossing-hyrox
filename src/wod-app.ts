@@ -339,7 +339,7 @@ namespace Wod {
   function renderScores(): void {
     const w = currentWod();
     const todo = w ? competitors(state, w).filter(a => scoreStatus(w, state.scores[w.id]?.[a.id]) === 'todo').length : 0;
-    const how = w?.type === 'time' ? ` Saisissez le temps affiché par le chrono (${shortTime(w) ? 'mm:ss' : 'hh:mm:ss'}), pas une heure.${w.capMinutes ? ` Time cap : ${capText(w)}.` : ''}` : '';
+    const how = w?.type === 'time' ? ` Saisissez le temps affiché par le chrono (${shortTime(w) ? 'minutes : secondes' : 'heures : minutes : secondes'}), pas une heure.${w.capMinutes ? ` Time cap : ${capText(w)}.` : ''}` : '';
     heading('Saisie des scores', w ? `${w.name} — ${TYPE_LABELS[w.type]}.${how} Le score s’enregistre dès que vous quittez la case (ou touche Entrée). ${todo ? `${todo} score(s) à saisir sur ce WOD.` : 'Tous les scores de ce WOD sont saisis.'}` : 'Ajoutez d’abord un WOD.',
       w ? `<button class="format-chip${onlyTodo ? ' active' : ''}" data-action="only-todo" aria-pressed="${onlyTodo}">À saisir seulement (${todo})</button><button class="button" data-action="print-blank" title="Deux feuilles vierges de ce WOD à remplir à la main">${PRINTER}Feuille vierge</button><button class="button" data-action="print-sheets" title="Une feuille par participant affiché (suivant les filtres)">${PRINTER}Feuilles jury</button>` : '');
     if (state.workouts.length) wodPicker(state.workouts.map(wodTab), selectedWod, 'wod');
@@ -363,7 +363,7 @@ namespace Wod {
         rows.push(`<tr><td><strong>${esc(athleteLabel(a))}</strong><div class="muted">${esc(group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${savedText(w, a)}</td>${placeCells(w, a, places)}<td class="actions">${forfeit ? `<button class="button compact" data-reinstate="${a.id}">Annuler le forfait</button>` : `<button class="button compact" data-forfeit="${a.id}">Forfait</button>`}</td></tr>`);
       }
     }
-    const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
+    const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ (${shortTime(w) ? 'MIN : S' : 'H : MIN : S'})${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
     const none = w.phase === 'final' && !competitors(state, w).length ? 'Aucun qualifié pour la Finale : qualifiez-les dans l’onglet 4. Classements.' : 'Ajoutez des participants dans l’onglet 1.';
     setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', 'PLACE', ...(points ? ['POINTS'] : []), 'ACTIONS'], rows, onlyTodo && competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none,
       ['name', null, null, 'place', ...(points ? ['points'] : []), null]);
@@ -409,7 +409,7 @@ namespace Wod {
   function sheetScore(w: Workout): string {
     if (w.type === 'time') {
       const short = shortTime(w);
-      const clock = `<div class="sheet-field"><span>Temps réalisé</span><b class="sheet-clock">${short ? '<i></i>:<i></i>' : '<i></i>:<i></i>:<i></i>'}</b><em>${short ? 'mm:ss' : 'hh:mm:ss'}</em></div>`;
+      const clock = `<div class="sheet-field"><span>Temps réalisé</span><b class="sheet-clock">${short ? '<i></i>:<i></i>' : '<i></i>:<i></i>:<i></i>'}</b><em>${short ? 'min : s' : 'h : min : s'}</em></div>`;
       return `${clock}<p class="sheet-or">ou, si arrêté au cap${w.capMinutes ? ` de ${capText(w)}` : ''} :</p>${line('Reps faites', w.totalReps ? `sur ${w.totalReps}` : 'reps')}<p class="sheet-hint">Remplir une seule des deux cases : le temps si l’athlète a fini, sinon les reps.</p>`;
     }
     if (w.type === 'load') return line('Charge retenue', 'kg');

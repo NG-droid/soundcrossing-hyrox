@@ -82,6 +82,12 @@ namespace Wod {
     const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
     return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
   }
+  // Temps affiché en toutes lettres, pour ne pas le confondre avec une heure : « 8 min 00 s », « 1 h 05 min 30 s ».
+  export function duree(ms: number): string {
+    const s = Math.round(ms / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, '0');
+    return h ? `${h} h ${String(m).padStart(2, '0')} min ${sec} s` : m ? `${m} min ${sec} s` : `${s % 60} s`;
+  }
   // Accepte « 7:45 », « 07:45 », « 1:02:30 », « 7m45 » ou « 465 » (secondes).
   export function parseTime(text: string): number | null {
     const t = text.trim().replace(/\s+/g, '').replace(/[hm']/gi, ':').replace(/s$|"$/i, '');
@@ -157,7 +163,7 @@ namespace Wod {
       if (has('timeMs') && has('reps')) return 'temps et reps en même temps (soit le temps, soit les reps au cap)';
       if (has('timeMs')) {
         if (!(s.timeMs! > 0)) return 'temps nul';
-        if (w.capMinutes && s.timeMs! > w.capMinutes * 60000) return `temps ${clock(s.timeMs!)} au-delà du time cap de ${w.capMinutes} min`;
+        if (w.capMinutes && s.timeMs! > w.capMinutes * 60000) return `temps ${duree(s.timeMs!)} au-delà du time cap de ${w.capMinutes} min`;
         return null;
       }
       if (!has('reps')) return 'score vide';
@@ -178,7 +184,7 @@ namespace Wod {
   export function scoreText(w: Workout, s: Score | undefined): string {
     if (s?.forfeit) return 'Forfait';
     if (!hasScore(w, s)) return '';
-    if (w.type === 'time') return s.timeMs !== undefined ? clock(s.timeMs) : `CAP + ${s.reps} reps`;
+    if (w.type === 'time') return s.timeMs !== undefined ? duree(s.timeMs) : `CAP + ${s.reps} reps`;
     if (w.type === 'load') return `${String(s.kg).replace('.', ',')} kg`;
     const reps = s.reps ?? 0;
     if (w.type === 'amrap' && w.repsPerRound) return `${Math.floor(reps / w.repsPerRound)} tours + ${reps % w.repsPerRound} reps`;
