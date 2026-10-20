@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parent
 PORT = int(os.environ.get("SOUNDCROSSING_PORT", "8767"))  # autre port : uniquement pour les tests
 URL = f"http://127.0.0.1:{PORT}"
 IDENTITY = hashlib.sha256(str(ROOT).encode()).hexdigest()
+# Version du code de ce serveur : après une mise à jour, un serveur resté ouvert sert encore l’ancienne liste de fichiers.
+CODE = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 MAX_DATA = 20 * 1024 * 1024
 
 
@@ -53,7 +55,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = unquote(urlparse(self.path).path)
         if path == "/health":
-            body = json.dumps({"app": "pace-hyrox", "identity": IDENTITY, "data": str(DATA_FILE.parent)}).encode()
+            body = json.dumps({"app": "pace-hyrox", "identity": IDENTITY, "data": str(DATA_FILE.parent), "code": CODE}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -78,6 +80,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
         super().do_GET()
+
+    def do_POST(self):
+        """Arrêt demandé par un lancement plus récent du même dossier, pour lui laisser la place."""
+        if unquote(urlparse(self.path).path) != "/stop":
+            self.send_error(404)
+            return
+        # Jamais depuis une page web : seul server.py connaît l’identité du dossier.
+        if self.headers.get("Host") != f"127.0.0.1:{PORT}" or self.headers.get("Origin") is not None \
+                or self.headers.get("X-Identity") != IDENTITY:
+            self.send_error(403)
+            return
+        self.send_response(204)
+        self.end_headers()
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def do_PUT(self):
         """Copie sur le disque des données enregistrées par le navigateur."""
@@ -264,23 +280,48 @@ def update():
         print("Mise à jour impossible pour le moment ; la version actuelle démarre.", flush=True)
 
 
+def start():
+    return ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+
+
+def replace_previous(can_stop: bool):
+    """Arrête le Soundcrossing d’une version précédente puis démarre celui-ci à sa place."""
+    if not can_stop:  # trop ancien pour savoir s’arrêter seul
+        print("Une version précédente de Soundcrossing est encore ouverte.\n"
+              "Fermez son autre fenêtre (ou quittez son icône près de l’horloge), puis relancez Soundcrossing.")
+        sys.exit(1)
+    urlopen(Request(f"{URL}/stop", data=b"", method="POST", headers={"X-Identity": IDENTITY}), timeout=5).close()
+    for _ in range(50):
+        try:
+            return start()
+        except OSError:
+            time.sleep(0.1)
+    raise OSError("ancien serveur toujours là")
+
+
 def main():
     update()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        server = start()
     except OSError:
         try:
             with urlopen(f"{URL}/health", timeout=2) as response:
                 info = json.load(response)
             if info.get("identity") != IDENTITY:
                 raise ValueError("Le port est occupé par une autre application.")
+            server = None
+            if info.get("code") != CODE:
+                # Soundcrossing tournait déjà avec une version précédente : il servirait la nouvelle page avec
+                # l’ancienne liste de fichiers (fichier ajouté introuvable, tableaux vides). On le remplace.
+                server = replace_previous("code" in info)
+        except (URLError, ValueError, OSError):
+            print(f"Le port {PORT} est occupé. Fermez l’autre application puis relancez Soundcrossing.")
+            sys.exit(1)
+        if server is None:
             if "--no-open" not in sys.argv:
                 webbrowser.open(URL)
             print(f"Soundcrossing est déjà ouvert : {URL}")
             return
-        except (URLError, ValueError, OSError):
-            print(f"Le port {PORT} est occupé. Fermez l’autre application puis relancez Soundcrossing.")
-            sys.exit(1)
     if WITHOUT_WINDOW:
         stop = "Pour arrêter : clic droit sur l’icône Soundcrossing près de l’horloge, puis Quitter."
     else:
