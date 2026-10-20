@@ -161,7 +161,6 @@
 .format-chip.chip-level-open.active,.format-chip.chip-level-scaled.active{background:#34507a;border-color:#34507a;color:#fff}
 .format-chip.chip-level-pro.active,.format-chip.chip-level-rx.active{background:#a41921;border-color:#a41921;color:#fff}
 /* Case de temps unique hh:mm:ss (heure d’arrivée Hyrox, temps WOD) : les « : » se placent tout seuls. */
-.time-box{width:104px;padding:9px 10px;border:1px solid #9fa3a9;border-radius:6px;background:#fff;font:inherit;font-size:15px;font-weight:600;letter-spacing:.5px;text-align:center;font-variant-numeric:tabular-nums}.time-box:focus{outline:2px solid #d8242d;outline-offset:1px;border-color:#d8242d}.time-box.invalid{border-color:#d8242d;background:#fff0f0}.time-box::placeholder{color:#9a9ea4;font-weight:400}
 .arrival-entry{display:flex;align-items:center;gap:6px;white-space:nowrap}.score-name{font-weight:700;color:#222}.score-name span{font-weight:400;color:#777;padding:0 4px}
 .score-time{width:150px;padding:9px 10px;border:1px solid #a3a6ab;border-radius:6px;background:#e6e8eb;color:#222;font:inherit;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}.score-time:focus{outline:2px solid #d8242d;outline-offset:1px;border-color:#d8242d}.score-time.invalid{border-color:#d8242d;background:#fff0f0}
 /* Tableaux : nom à gauche, toutes les autres valeurs centrées dans leur colonne. */
@@ -334,3 +333,15 @@
 /* En-têtes triables (Hyrox + WOD) : clic = croissant ▲, encore = décroissant ▼, 3e clic = ordre habituel. */
 .sort-head{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;white-space:nowrap;border-radius:4px}.sort-head:hover{color:#1b1b1b}.sort-head:focus-visible{outline:2px solid #d8242d;outline-offset:3px}.sort-arrow{font-size:9px;line-height:1;opacity:.3}.sort-head:hover .sort-arrow{opacity:.6}.sort-head.active{color:#1b1b1b;font-weight:800}.sort-head.active .sort-arrow{opacity:1;color:#d8242d}
 #rank-heading .sort-head{white-space:normal;text-align:left}
+/* Case de temps unique (Saisie.box) : arrivée, départ, temps total Hyrox et temps For Time du WOD.
+   Même case partout : gris, 150 px, petite horloge à droite. Les cases de reps / tours / kg du WOD ont le même aspect, sans horloge. */
+input.time-box,input.score-num,.modal input.time-box{width:150px;max-width:100%;min-height:42px;margin:0;padding:9px 34px 9px 12px;border:1px solid #a3a6ab;border-radius:6px;background:#e6e8eb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23222' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") no-repeat right 11px center/15px;color:#222;font:inherit;font-size:15px;font-weight:600;letter-spacing:.5px;text-align:left;font-variant-numeric:tabular-nums;vertical-align:middle}
+input.score-num{width:110px;padding-right:12px;background-image:none}
+input.time-box::placeholder{color:#6b6f75;font-weight:600;letter-spacing:1px}input.score-num::placeholder{color:#8a8e94;font-weight:400;font-size:13px}
+input.time-box:focus,input.score-num:focus{outline:2px solid #d8242d;outline-offset:1px;border-color:#d8242d}
+input.time-box.invalid,input.score-num.invalid{border-color:#d8242d;background-color:#fff0f0}
+input.time-box:disabled,input.score-num:disabled{background:#f6f7f8;border-color:transparent;color:#222;opacity:1}
+input.time-box:disabled::placeholder,input.score-num:disabled::placeholder{color:#b4b7bb}
+input.time-box:disabled,input.score-num:disabled{cursor:not-allowed}.race-table[data-view] input.time-box:disabled{text-align:center;padding-right:12px}
+/* Case vide grisée (WOD : temps OU reps) : reste visible comme une case, sans horloge. */
+input.time-box:disabled:placeholder-shown,input.score-num:disabled:placeholder-shown{background:#eceef0;border-color:#d0d3d7}

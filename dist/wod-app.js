@@ -429,12 +429,12 @@ var Wod;
         const s = state.scores[w.id]?.[a.id];
         if (s?.forfeit)
             return `<span class="outcome-badge">Forfait</span>`;
-        const field = (name, value, ph, mode = 'numeric', off = false) => `<input data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}"${off ? ' disabled' : ''}>`;
+        const field = (name, value, ph, mode = 'numeric', off = false) => `<input class="score-num" data-score="${a.id}" data-field="${name}" value="${esc(value ?? '')}" placeholder="${ph}" inputmode="${mode}" aria-label="${ph}"${off ? ' disabled' : ''}>`;
         if (w.type === 'time') {
             // Temps du chrono (durée, pas une heure) : mm:ss si le cap fait moins d’une heure, sinon hh:mm:ss.
             const short = shortTime(w);
             // Soit un temps (fini), soit des reps (stoppé au cap) : la case remplie grise l’autre.
-            const time = Saisie.box(`data-score="${a.id}" data-field="time"${s?.reps !== undefined ? ' disabled' : ''}`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short);
+            const time = Saisie.box(`data-score="${a.id}" data-field="time"${s?.reps !== undefined ? ' disabled' : ''}`, Saisie.fromMs(s?.timeMs, short), `Temps réalisé ${short ? 'mm:ss' : 'hh:mm:ss'}`, short ? 2 : 3);
             return `<div class="score-inputs">${time}<span>ou, si stoppé au cap :</span>${field('reps', s?.timeMs === undefined ? s?.reps : '', 'Reps faites', 'numeric', s?.timeMs !== undefined)}</div>`;
         }
         if (w.type === 'load')
