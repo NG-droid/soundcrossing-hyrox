@@ -35,8 +35,23 @@ def runtime_bytes() -> bytes:
     return data
 
 
+def launcher() -> Path:
+    """Compile Soundcrossing.exe (windows/lanceur.c) : lance le serveur sans fenêtre noire, icône près de l’horloge.
+    Nécessite MinGW (paquet Ubuntu gcc-mingw-w64-x86-64), installé par la CI."""
+    output = ROOT / "livraison" / "Soundcrossing.exe"
+    output.parent.mkdir(exist_ok=True)
+    resources = output.with_name("lanceur.res")
+    source = ROOT / "windows"
+    subprocess.run(["x86_64-w64-mingw32-windres", "lanceur.rc", "-O", "coff", "-o", str(resources)], cwd=source, check=True)
+    subprocess.run(["x86_64-w64-mingw32-gcc", "-Os", "-s", "-municode", "-mwindows", "-Wall", "-Wextra", "-Werror", "-Wl,--no-insert-timestamp",
+                    "-o", str(output), "lanceur.c", str(resources), "-lshell32", "-luser32"], cwd=source, check=True)
+    resources.unlink()
+    return output
+
+
 def build() -> Path:
     data = runtime_bytes()
+    exe = launcher()
     output = ROOT / "livraison" / "Soundcrossing-Windows-x64.zip"
     output.parent.mkdir(exist_ok=True)
     pending = output.with_suffix(".zip.tmp")
@@ -51,6 +66,7 @@ def build() -> Path:
                 archive.writestr(f"{PREFIX}runtime/{info.filename}", runtime.read(info))
             for name in (*APP_FILES, "Lancer Soundcrossing.bat"):
                 archive.write(ROOT / name, f"{PREFIX}{name}")
+            archive.write(exe, f"{PREFIX}Soundcrossing.exe")
             # Windows users can read this guide with Notepad, without another app.
             guide = (ROOT / "WINDOWS.md").read_text(encoding="utf-8")
             archive.writestr(f"{PREFIX}LISEZ-MOI.txt", guide.replace("\n", "\r\n").encode("utf-8-sig"))

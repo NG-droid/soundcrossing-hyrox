@@ -66,10 +66,36 @@ class WindowsDistributionTests(unittest.TestCase):
             self.assertNotIn(f"{PREFIX}Lancer Soundcrossing.command", names)
             self.assertNotIn(f"{PREFIX}DEMARRER.md", names)
             launcher = archive.read(f"{PREFIX}Lancer Soundcrossing.bat").decode()
+            # Le .bat passe la main à Soundcrossing.exe s’il est là, sinon il garde l’ancienne fenêtre noire.
+            self.assertLess(launcher.index('start "" "%~dp0Soundcrossing.exe"'), launcher.index('"runtime\\python.exe" -I "%~dp0server.py"'))
             self.assertLess(launcher.index('"runtime\\python.exe" -I "%~dp0server.py"'), launcher.index("py -3"))
             guide = archive.read(f"{PREFIX}LISEZ-MOI.txt").decode("utf-8-sig")
             self.assertIn("Python est déjà inclus", guide)
             self.assertIn("n’a pas encore été testé", guide)
+
+    def test_launcher_is_a_windows_x64_program_without_console(self):
+        with ZipFile(ARCHIVE) as archive:
+            executable = archive.read(f"{PREFIX}Soundcrossing.exe")
+        self.assertEqual(executable[:2], b"MZ")
+        offset = struct.unpack_from("<I", executable, 0x3C)[0]
+        self.assertEqual(executable[offset:offset + 4], b"PE\0\0")
+        self.assertEqual(struct.unpack_from("<H", executable, offset + 4)[0], 0x8664)
+        # En-tête optionnel PE32+ : sous-système 2 = programme graphique, donc aucune fenêtre d’invite de commande.
+        self.assertEqual(struct.unpack_from("<H", executable, offset + 24)[0], 0x20B)
+        self.assertEqual(struct.unpack_from("<H", executable, offset + 24 + 68)[0], 2)
+        self.assertIn("runtime\\python.exe".encode("utf-16-le"), executable)
+        self.assertIn("--lanceur".encode("utf-16-le"), executable)
+
+    def test_update_replaces_the_launchers_shipped_in_the_package(self):
+        spec = importlib.util.spec_from_file_location("package_server", ROOT / "server.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with ZipFile(ARCHIVE) as archive:
+            names = set(archive.namelist())
+        for name in ("Soundcrossing.exe", "Lancer Soundcrossing.bat"):
+            self.assertIn(name, module.UPDATABLE)
+        for name in module.UPDATABLE:
+            self.assertIn(f"{PREFIX}{name}", names)
 
     def test_extracted_application_serves_assets_with_spaces_and_unicode_paths(self):
         with extracted_server() as (base, module):

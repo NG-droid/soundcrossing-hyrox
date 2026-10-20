@@ -1,6 +1,12 @@
 @echo off
-title Soundcrossing - Gardez cette fenetre ouverte
 cd /d "%~dp0"
+rem Soundcrossing.exe lance l'application sans fenetre noire et reste en icone pres de l'horloge.
+rem Chaque bloc entre parentheses se termine par exit : une mise a jour peut remplacer ce fichier pendant qu'il tourne.
+if exist "Soundcrossing.exe" if exist "runtime\python.exe" (
+  start "" "%~dp0Soundcrossing.exe"
+  exit /b
+)
+title Soundcrossing - Gardez cette fenetre ouverte
 if exist "runtime\python.exe" (
   "runtime\python.exe" -I "%~dp0server.py"
   if errorlevel 1 (
