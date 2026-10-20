@@ -262,6 +262,7 @@ var PaceApp;
         $('confirm-dialog').showModal();
     }
     function entryById(id) { return state.session.entries.find(e => e.id === id); }
+    const TRAINING_PILL = '<em class="event-pick-training">Entraînement</em>';
     function currentRace() { return state.session.races.find(race => race.id === selectedRaceId) ?? state.session.races[0]; }
     function raceEntries() {
         const race = currentRace(), ids = new Set(state.session.races.filter(r => r.date === race?.date).map(r => r.id));
@@ -344,6 +345,12 @@ var PaceApp;
         $('session-title').textContent = race?.title ?? 'Votre prochain événement';
         $('event-format-badge').textContent = race ? eventFormatLabel(race) : '';
         $('event-format-badge').hidden = !race;
+        $('training-banner').hidden = !race?.training;
+        {
+            const count = state.session.races.filter(r => r.training).length;
+            $('training-delete-all').hidden = !count;
+            $('training-delete-all').textContent = count > 1 ? `Supprimer les ${count} entraînements` : 'Supprimer l’entraînement';
+        }
         $('session-date').textContent = race ? new Date(`${race.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Choisissez une date pour réunir tous les participants.';
         const addLabel = race ? race.format === 'DUO' ? '+ Ajouter un duo' : '+ Ajouter un participant' : '+ Créer un événement';
         $('new-race-button').textContent = state.session.races.length ? '+ Nouvel événement' : '+ Créer un événement';
@@ -353,7 +360,7 @@ var PaceApp;
         $('race-selector-panel').hidden = state.session.races.length < 2;
         {
             const current = state.session.races.find(r => r.id === selectedRaceId) || state.session.races[0];
-            $('race-selector').innerHTML = current ? `<button type="button" class="event-dd-toggle" aria-haspopup="listbox" aria-expanded="false"><span class="event-dd-current">${((r) => `<strong>${esc(r.title)}</strong><span>${esc(raceLabel(r))}<em class="event-pick-format">${eventFormatLabel(r)}</em></span>`)(current)}</span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="event-dd-list" role="listbox" hidden>${state.session.races.map(r => `<button type="button" role="option" class="event-dd-option${r.id === current.id ? ' active' : ''}" data-event-id="${esc(r.id)}" aria-selected="${r.id === current.id}"><strong>${esc(r.title)}</strong><span>${esc(raceLabel(r))}<em class="event-pick-format">${eventFormatLabel(r)}</em></span></button>`).join('')}</div>` : '';
+            $('race-selector').innerHTML = current ? `<button type="button" class="event-dd-toggle" aria-haspopup="listbox" aria-expanded="false"><span class="event-dd-current">${((r) => `<strong>${esc(r.title)}</strong><span>${esc(raceLabel(r))}<em class="event-pick-format">${eventFormatLabel(r)}</em>${r.training ? TRAINING_PILL : ''}</span>`)(current)}</span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="event-dd-list" role="listbox" hidden>${state.session.races.map(r => `<button type="button" role="option" class="event-dd-option${r.id === current.id ? ' active' : ''}" data-event-id="${esc(r.id)}" aria-selected="${r.id === current.id}"><strong>${esc(r.title)}</strong><span>${esc(raceLabel(r))}<em class="event-pick-format">${eventFormatLabel(r)}</em>${r.training ? TRAINING_PILL : ''}</span></button>`).join('')}</div>` : '';
         }
         $('total-athletes').textContent = String(entries.reduce((n, e) => n + (e.format === 'DUO' ? 2 : 1), 0));
         for (const [id, count] of [['nav-count', entries.length], ['nav-live', running], ['nav-results', finished], ['nav-scores', finished], ['stat-teams', entries.length], ['stat-running', running], ['stat-finished', finished]])
@@ -490,7 +497,7 @@ var PaceApp;
             if (format !== 'SOLO' && format !== 'DUO' && format !== 'MIXED')
                 throw Error('Choisissez le format de l’événement : Solo, Duo ou Solo + Duo.');
             const levels = new FormData(form).get('levels') === 'pro' ? Pace.LEVELS : [];
-            const race = Pace.validateRace({ id: old?.id ?? crypto.randomUUID(), title: field(form, 'title').value.trim(), date: field(form, 'date').value, format, levels, previousTitles: old?.previousTitles ?? [] });
+            const race = Pace.validateRace({ id: old?.id ?? crypto.randomUUID(), title: field(form, 'title').value.trim(), date: field(form, 'date').value, format, levels, previousTitles: old?.previousTitles ?? [], training: old?.training });
             if (old && old.date !== race.date && state.session.entries.some(e => e.raceId === id && e.startedAt !== null))
                 throw Error('Des départs sont déjà enregistrés à cette date. Créez un nouvel événement pour une autre journée.');
             if (state.session.races.some(r => r.id !== race.id && normalize(r.title) === normalize(race.title) && r.date === race.date))
@@ -1115,23 +1122,40 @@ var PaceApp;
             toast(error instanceof Error ? error.message : 'Sauvegarde invalide.', true);
         }
     }
-    function demo() {
-        if (state.session.races.length)
+    // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
+    function createTraining() {
+        const { race, entries } = Pace.trainingEvent(state.session.races);
+        if (commit(`création de l’entraînement ${race.title}`, session => { session.races.push(race); session.entries.push(...entries); })) {
+            selectedRaceId = race.id;
+            focusId = '';
+            activeFormat = 'all';
+            activeLevel = '';
+            view = 'scores';
+            $('search').value = '';
+            rememberEvent();
+            $('settings-dialog').close();
+            render();
+            toast(`Entraînement créé : ${entries.length} inscriptions fictives. Saisissez les arrivées dans « Scores ».`);
+        }
+    }
+    function deleteTrainings(ids) {
+        const races = state.session.races.filter(r => r.training && ids.includes(r.id));
+        if (!races.length)
             return;
-        commit('chargement de l’exemple', session => {
-            session.title = 'Soundcrossing';
-            const race = Pace.validateRace({ id: 'demo-event', title: 'Soundcrossing Challenge', date: session.date });
-            session.races = [race];
-            const examples = [
-                ['Alex Martin', '', 'SOLO', 'H', '09:00', '09:58'], ['Emma Durand', 'Léa Moreau', 'DUO', 'FF', '09:05', '10:08'],
-                ['Lucas Petit', 'Zoé Bernard', 'DUO', 'HF', '09:10', '10:14'], ['Hugo Robert', 'Tom Garcia', 'DUO', 'HH', '09:15', '10:12'],
-                ['Manon Simon', '', 'SOLO', 'F', '09:20', ''], ['Jules Leroy', 'Paul Denis', 'DUO', 'HH', '09:25', '10:26']
-            ];
-            session.entries = examples.map(([name1, name2, format, category, scheduled, arrival]) => {
-                const entry = validateEntry({ id: crypto.randomUUID(), bib: '', raceId: race.id, name1, name2, format, category, scheduled, status: 'waiting', startedAt: null, durationMs: null });
-                return arrival ? validateEntry({ ...entry, ...Pace.calculateArrival(race, entry, arrival, false), status: 'finished' }) : entry;
-            });
-        });
+        const one = races.length === 1;
+        ask(one ? 'Supprimer cet entraînement ?' : `Supprimer les ${races.length} entraînements ?`, `${one ? `« ${races[0].title} », ses inscriptions et ses résultats fictifs seront supprimés.` : 'Tous les événements d’entraînement, leurs inscriptions et leurs résultats fictifs seront supprimés.'} Vos vrais événements ne sont pas touchés. La commande Annuler permet de revenir en arrière.`, () => {
+            const gone = new Set(races.map(r => r.id));
+            if (commit(one ? `suppression de l’entraînement ${races[0].title}` : 'suppression des entraînements', session => { session.races = session.races.filter(r => !gone.has(r.id)); session.entries = session.entries.filter(e => !gone.has(e.raceId)); })) {
+                if (gone.has(selectedRaceId)) {
+                    selectedRaceId = '';
+                    focusId = '';
+                    rememberEvent();
+                }
+                $('settings-dialog').close();
+                render();
+                toast(one ? 'Entraînement supprimé.' : 'Entraînements supprimés.');
+            }
+        }, 'Supprimer');
     }
     // ——— Onglet Scores : saisie directement dans le tableau, sans fenêtre ———
     function raceOf(entry) { return state.session.races.find(r => r.id === entry.raceId); }
@@ -1326,7 +1350,10 @@ var PaceApp;
     $('new-session-button').addEventListener('click', () => { $('settings-dialog').close(); $('reset-dialog').showModal(); $('reset-save').focus(); });
     $('reset-save').addEventListener('click', () => { exportBackup(); resetAll(); });
     $('reset-now').addEventListener('click', resetAll);
-    $('demo-button').addEventListener('click', demo);
+    $('demo-button').addEventListener('click', createTraining);
+    $('training-create').addEventListener('click', createTraining);
+    $('training-delete').addEventListener('click', () => deleteTrainings([selectedRaceId]));
+    $('training-delete-all').addEventListener('click', () => deleteTrainings(state.session.races.map(r => r.id)));
     $('undo-button').addEventListener('click', undo);
     $('search').addEventListener('input', render);
     $('sort').addEventListener('change', render);

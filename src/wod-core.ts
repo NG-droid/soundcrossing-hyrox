@@ -29,6 +29,8 @@ namespace Wod {
     scores: Record<string, Record<string, Score>>;
     // Qualifiés pour la Finale (identifiants des participants).
     finalists?: string[];
+    // Événement d’entraînement : participants fictifs, pour s’exercer sans toucher aux vrais événements.
+    training?: true;
   }
   // Comme dans l’app Hyrox : plusieurs événements, chacun avec son format Solo, Duo ou Solo + Duo.
   // revision et savedAt : comme dans l’app Hyrox, pour repérer une écriture plus récente faite ailleurs.
@@ -446,6 +448,7 @@ namespace Wod {
       id: isText(v.id) && v.id ? v.id : 'wod-1', title: isText(v.title) && v.title.trim() ? v.title : 'Compétition WOD', date: isText(v.date) ? v.date : '', format,
       method: v.method === 'points' ? 'points' : 'places',
       levels, athletes, workouts, scores,
+      ...(v.training === true ? { training: true as const } : {}),
       ...(Array.isArray(v.finalists) ? { finalists: [...new Set(v.finalists.filter((id): id is string => isText(id) && athleteIds.has(id)))] } : {}),
     };
   }
@@ -523,6 +526,13 @@ namespace Wod {
     athletes.forEach((a, i) => {
       scores.w1![a.id] = s1[i]!; scores.w2![a.id] = { reps: s2[i]! }; scores.w3![a.id] = { kg: s3[i]! };
     });
-    return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', levels: ['Scaled', 'RX'], athletes, workouts, scores };
+    return { id: 'exemple', title: 'Exemple — Soundcrossing WOD Challenge', date, format: 'MIXED', method: 'places', levels: ['Scaled', 'RX'], athletes, workouts, scores, training: true };
+  }
+  // Mode entraînement : mêmes participants et WOD que l’exemple, mais aucun score, pour s’exercer à la saisie.
+  export function training(date: string, existing: Competition[]): Competition {
+    let title = 'Entraînement — Soundcrossing WOD';
+    for (let n = 2; existing.some(e => e.date === date && e.title === title); n++) title = `Entraînement ${n} — Soundcrossing WOD`;
+    const base = demo(date);
+    return { ...base, id: 'entrainement', title, scores: {}, training: true };
   }
 }

@@ -182,13 +182,16 @@ namespace Wod {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  const TRAINING_PILL = '<em class="event-pick-training">Entraînement</em>';
   function render(): void {
     const hasEvent = store.events.length > 0; syncUndo();
+    $('training-banner').hidden = !hasEvent || !state.training;
+    { const count = store.events.filter(e => e.training).length; $('training-delete-all').hidden = !count; $('training-delete-all').textContent = count > 1 ? `Supprimer les ${count} entraînements` : 'Supprimer l’entraînement'; }
     $('no-event').hidden = hasEvent; $('event-content').hidden = !hasEvent;
     $('edit-competition').hidden = !hasEvent; $('event-format-badge').hidden = !hasEvent;
     $('new-event-button').textContent = hasEvent ? '+ Nouvel événement' : '+ Créer un événement';
     $('event-selector-panel').hidden = store.events.length < 2;
-    { const current = store.events.find(e => e.id === store.selectedId) || store.events[0]; $('event-selector').innerHTML = current ? `<button type="button" class="event-dd-toggle" aria-haspopup="listbox" aria-expanded="false"><span class="event-dd-current">${((e) => `<strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${eventFormatLabel(e.format)}</em></span>`)(current)}</span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="event-dd-list" role="listbox" hidden>${store.events.map(e => `<button type="button" role="option" class="event-dd-option${e.id === current.id ? ' active' : ''}" data-event-id="${esc(e.id)}" aria-selected="${e.id === current.id}"><strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${eventFormatLabel(e.format)}</em></span></button>`).join('')}</div>` : ''; }
+    { const current = store.events.find(e => e.id === store.selectedId) || store.events[0]; $('event-selector').innerHTML = current ? `<button type="button" class="event-dd-toggle" aria-haspopup="listbox" aria-expanded="false"><span class="event-dd-current">${((e) => `<strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${eventFormatLabel(e.format)}</em>${e.training ? TRAINING_PILL : ''}</span>`)(current)}</span><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div class="event-dd-list" role="listbox" hidden>${store.events.map(e => `<button type="button" role="option" class="event-dd-option${e.id === current.id ? ' active' : ''}" data-event-id="${esc(e.id)}" aria-selected="${e.id === current.id}"><strong>${esc(e.title)}</strong><span>${esc(dateLabel(e.date))}<em class="event-pick-format">${eventFormatLabel(e.format)}</em>${e.training ? TRAINING_PILL : ''}</span></button>`).join('')}</div>` : ''; }
     if (!hasEvent) { $('title').textContent = 'Compétition WOD'; $('session-date').textContent = 'Créez un événement pour commencer.'; return; }
     $('title').textContent = state.title;
     $('event-format-badge').textContent = `${eventFormatLabel(state.format)} · WOD`;
@@ -701,6 +704,23 @@ namespace Wod {
     for (const sheet of exportRows(state)) XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(sheet.rows), sheet.name);
     XLSX.writeFile(book, `${state.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'wod'} - résultats.xlsx`);
   }
+  // Mode entraînement : événement fictif, bien signalé, supprimable en un clic. Les vrais événements ne bougent pas.
+  function loadTraining(): void {
+    const example = training(today(), store.events);
+    example.id = `entrainement-${uid()}`;
+    store.events.push(example); selectEvent(example.id); rememberEvent(); if (!save(false, `création de l’entraînement ${example.title}`)) return;
+    view = 'scores'; render();
+    $<HTMLDialogElement>('settings-dialog').close(); toast(`Entraînement créé : ${example.athletes.length} inscrits fictifs et ${example.workouts.length} WOD. Saisissez les scores.`);
+  }
+  function deleteTrainings(ids: string[]): void {
+    const events = store.events.filter(e => e.training && ids.includes(e.id)); if (!events.length) return;
+    const one = events.length === 1;
+    if (!confirm(`${one ? `Supprimer l’entraînement « ${events[0]!.title} », ses inscriptions et ses scores fictifs ?` : `Supprimer les ${events.length} événements d’entraînement, leurs inscriptions et leurs scores fictifs ?`}\n\nVos vrais événements ne sont pas touchés.`)) return;
+    store.events = store.events.filter(e => !events.includes(e));
+    if (events.some(e => e.id === state.id)) selectEvent('');
+    rememberEvent(); if (!save(false, one ? `suppression de l’entraînement ${events[0]!.title}` : 'suppression des entraînements')) return;
+    $<HTMLDialogElement>('settings-dialog').close(); render(); toast(one ? 'Entraînement supprimé.' : 'Entraînements supprimés.');
+  }
   function loadDemo(): void {
     const example = demo(today());
     example.id = `exemple-${uid()}`;
@@ -800,6 +820,9 @@ namespace Wod {
     $('no-event-demo').addEventListener('click', loadDemo);
     $('undo-button').addEventListener('click', undo); $('no-event-undo').addEventListener('click', undo);
     $('demo-settings').addEventListener('click', loadDemo);
+    $('training-create').addEventListener('click', loadTraining);
+    $('training-delete').addEventListener('click', () => deleteTrainings([state.id]));
+    $('training-delete-all').addEventListener('click', () => deleteTrainings(store.events.map(e => e.id)));
     $('reset-button').addEventListener('click', () => {
       if (!confirm('Supprimer tous les événements WOD, inscriptions et scores ?\n\nUne sauvegarde des données actuelles sera téléchargée avant.')) return;
       if (store.events.length) exportBackup();
