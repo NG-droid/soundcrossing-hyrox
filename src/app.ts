@@ -174,15 +174,29 @@ namespace PaceApp {
   function resultRanking(): { entry: Pace.Entry; rank: number }[] {
     return Pace.eventRankingGroups(currentRace(), raceEntries()).filter(g => (!activeLevel || g.level === activeLevel) && (activeFormat === 'all' || g.format === activeFormat)).flatMap(g => Pace.rankingFor(state.session, g.format, currentRace()?.date ?? state.session.date, g.level));
   }
+  // Tri choisi en cliquant sur les en-têtes, mémorisé par onglet (« Arrivées à compléter » suit Scores).
+  const sortBy: Record<string, Tri.Etat | null> = {};
+  const sortTable = (): string => view === 'live' ? 'scores' : view;
+  function sortValue(e: Pace.Entry, key: string, ranks: Map<string, number>): Tri.Valeur {
+    if (key === 'rank') return ranks.get(e.id);
+    if (key === 'name') return label(e);
+    if (key === 'format') return Pace.groupLabel(e.level, Pace.formatLabel(e));
+    if (key === 'start') return departureText(e) === '—' ? null : departureText(e);
+    if (key === 'arrival') return e.arrivedAt;
+    if (key === 'time') return e.status === 'finished' ? e.durationMs : null;
+    return null;
+  }
   function filtered(): Pace.Entry[] {
-    const search = normalize($<HTMLInputElement>('search').value);
-    const sort = $<HTMLSelectElement>('sort').value;
-    if (view === 'results') return resultRanking().map(r => r.entry).filter(e => !search || normalize(label(e)).includes(search));
-    return raceEntries().filter(e => (view !== 'live' || !Pace.isResolved(e)) && (activeFormat === 'all' || Pace.formatKey(e) === activeFormat) && (!activeLevel || e.level === activeLevel) && (!search || normalize(label(e)).includes(search))).sort((a, b) => {
-      if (sort === 'time' || view === 'results' && sort === 'schedule') return (a.durationMs ?? Infinity) - (b.durationMs ?? Infinity) || label(a).localeCompare(label(b), 'fr');
-      if (sort === 'name') return label(a).localeCompare(label(b), 'fr');
-      return (departureText(a) === '—' ? '99:99' : departureText(a)).localeCompare(departureText(b) === '—' ? '99:99' : departureText(b)) || label(a).localeCompare(label(b), 'fr');
-    });
+    const search = normalize($<HTMLInputElement>('search').value), sort = sortBy[sortTable()] ?? null;
+    if (view === 'results') {
+      // Classements : on trie à l’intérieur de chaque catégorie (barre noire), les rangs ne changent pas.
+      const ranking = resultRanking(), ranks = new Map(ranking.map(r => [r.entry.id, r.rank]));
+      return Tri.appliquer(ranking.map(r => r.entry).filter(e => !search || normalize(label(e)).includes(search)), sort, (e, key) => sortValue(e, key, ranks), e => `${e.level}:${Pace.formatKey(e)}`);
+    }
+    // Ordre habituel : heure de départ, puis nom.
+    const list = raceEntries().filter(e => (view !== 'live' || !Pace.isResolved(e)) && (activeFormat === 'all' || Pace.formatKey(e) === activeFormat) && (!activeLevel || e.level === activeLevel) && (!search || normalize(label(e)).includes(search))).sort((a, b) =>
+      (departureText(a) === '—' ? '99:99' : departureText(a)).localeCompare(departureText(b) === '—' ? '99:99' : departureText(b)) || label(a).localeCompare(label(b), 'fr'));
+    return Tri.appliquer(list, sort, (e, key) => sortValue(e, key, new Map()));
   }
   function actionButton(action: string, id: string, text: string, css = '', title = ''): string {
     return `<button class="row-action ${css}" data-action="${action}" data-id="${esc(id)}"${title ? ` aria-label="${esc(title)}" title="${esc(title)}"` : ''}>${text}</button>`;
@@ -265,8 +279,8 @@ namespace PaceApp {
     $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
     $('show-podium-button').hidden = view === 'participants' || view === 'live';
     $('diploma-button').hidden = view !== 'results';
-    $('rank-heading').textContent = finalResults ? 'RANG' : 'RANG PROVISOIRE';
-    $<HTMLSelectElement>('sort').disabled = view === 'results'; $('sort').hidden = view === 'results';
+    $('rank-heading').dataset.label = finalResults ? 'RANG' : 'RANG PROVISOIRE';
+    Tri.marquer($('entries-head'), sortBy[sortTable()] ?? null);
     const list = filtered(); $('list-count').textContent = String(list.length);
     $('visible-count').textContent = `${list.length} départ${list.length > 1 ? 's' : ''} affiché${list.length > 1 ? 's' : ''}`;
     $<HTMLButtonElement>('undo-button').disabled = !state.history.length;
@@ -903,7 +917,9 @@ namespace PaceApp {
   $('training-form').addEventListener('submit', event => createTraining(event as SubmitEvent)); $('training-form').addEventListener('input', trainingSummary);
   $('training-delete').addEventListener('click', () => deleteTrainings([selectedRaceId])); $('training-delete-all').addEventListener('click', () => deleteTrainings(state.session.races.map(r => r.id)));
   $('undo-button').addEventListener('click', undo);
-  $('search').addEventListener('input', render); $('sort').addEventListener('change', render);
+  $('search').addEventListener('input', render);
+  // Clic sur un en-tête : croissant, décroissant, puis retour à l’ordre habituel.
+  $('entries-head').addEventListener('click', event => { const key = (event.target as HTMLElement).closest<HTMLElement>('[data-sort]')?.dataset.sort; if (!key) return; sortBy[sortTable()] = Tri.suivant(sortBy[sortTable()] ?? null, key); render(); });
   $('entry-form').addEventListener('submit', event => saveEntry(event as SubmitEvent));
   document.querySelectorAll<HTMLButtonElement>('[data-gender]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.person === '1') selectedGender1 = button.dataset.gender as Pace.Gender; else selectedGender2 = button.dataset.gender as Pace.Gender;

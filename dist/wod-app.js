@@ -29,6 +29,10 @@ var Wod;
     let onlyFinalists = false;
     let athleteLevel = '';
     let athleteCat = 'all';
+    // Tri choisi en cliquant sur les en-têtes (comme l’Hyrox), mémorisé par tableau.
+    const sortBy = {};
+    const sortTable = () => view === 'ranking' ? `ranking:${rankingTab === 'general' || rankingTab === 'final' ? 'general' : 'wod'}` : view;
+    const sortState = () => sortBy[sortTable()] ?? null;
     // Mêmes protections que l’app Hyrox : on n’écrase jamais une version plus récente d’une autre fenêtre,
     // l’écran n’affiche une modification qu’une fois enregistrée, et la version précédente reste en secours.
     let loadedRaw = null, storageBlocked = false;
@@ -325,10 +329,11 @@ var Wod;
     const searchText = () => $('search').value;
     const found = (a) => Wod.matchesSearch(a, searchText());
     const NO_MATCH = 'Aucun participant ne correspond à la recherche.';
-    function setTable(head, rows, emptyText) {
+    // `keys` : la clé de tri de chaque colonne (null : colonne non triable).
+    function setTable(head, rows, emptyText, keys = []) {
         if (!rows.length && searchText().trim() && view !== 'workouts')
             emptyText = NO_MATCH;
-        $('table-head').innerHTML = `<tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>`;
+        $('table-head').innerHTML = `<tr>${head.map((h, i) => Tri.th(h, keys[i], sortState())).join('')}</tr>`;
         $('table-body').innerHTML = rows.join('');
         $('empty').hidden = rows.length > 0;
         $('empty-text').textContent = emptyText;
@@ -395,8 +400,10 @@ var Wod;
             athleteCat = 'all';
         if (cats.length > 1)
             chips('chips3', [{ key: 'all', label: 'Tout le monde', count: inLevel.length }, ...cats.map(c => ({ key: c, label: Wod.categoryLabel(c), css: `chip-fmt-${c}`, count: inLevel.filter(a => Wod.category(a) === c).length }))], athleteCat, 'athlete-cat');
-        const rows = inLevel.filter(a => (athleteCat === 'all' || Wod.category(a) === athleteCat) && (!onlyFinalists || Wod.isFinalist(state, a)) && found(a)).map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong>${Wod.isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
-        setTable(['PARTICIPANT / DUO', 'CATÉGORIE', 'ACTIONS'], rows, 'Aucun participant pour l’instant.');
+        const list = inLevel.filter(a => (athleteCat === 'all' || Wod.category(a) === athleteCat) && (!onlyFinalists || Wod.isFinalist(state, a)) && found(a));
+        // Catégorie : dans l’ordre des filtres (niveau, puis Solo H, Solo F, Duo HH…).
+        const rows = Tri.appliquer(list, sortState(), (a, key) => key === 'name' ? Wod.athleteLabel(a) : key === 'cat' ? state.levels.indexOf(a.level ?? '') * 10 + Wod.CATEGORIES.indexOf(Wod.category(a)) : null).map(a => `<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong>${Wod.isFinalist(state, a) ? ' <span class="finalist-badge">Finaliste</span>' : ''}</td><td>${a.level ? `<span class="level-badge level-${esc(a.level.toLowerCase())}">${esc(a.level)}</span>` : ''}${badge(a)}</td><td class="actions"><button class="button compact" data-edit-athlete="${a.id}">Modifier</button><button class="button compact danger" data-delete-athlete="${a.id}">Supprimer</button></td></tr>`);
+        setTable(['PARTICIPANT / DUO', 'CATÉGORIE', 'ACTIONS'], rows, 'Aucun participant pour l’instant.', ['name', 'cat', null]);
     }
     function workoutDetails(w) {
         const parts = [];
@@ -483,14 +490,16 @@ var Wod;
             if (groups.length > 1)
                 rows.push(`<tr class="group-row"><td colspan="${points ? 6 : 5}">${esc(g)}</td></tr>`);
             const places = livePlaces(w, g);
-            for (const a of list) {
+            // Tri à l’intérieur du groupe ; les places bougent en direct pendant la saisie, l’ordre seulement au prochain affichage.
+            for (const a of Tri.appliquer(list, sortState(), (x, key) => key === 'name' ? Wod.athleteLabel(x) : key === 'place' ? places.ranks.get(x.id)
+                : key === 'points' ? (places.ranks.has(x.id) ? Wod.pointsFor(places.ranks.get(x.id)) : state.scores[w.id]?.[x.id]?.forfeit ? 0 : null) : null)) {
                 const forfeit = !!state.scores[w.id]?.[a.id]?.forfeit;
                 rows.push(`<tr><td><strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(Wod.group(a))}</div></td><td>${inputsFor(w, a)}</td><td class="score-saved" id="saved-${a.id}">${savedText(w, a)}</td>${placeCells(w, a, places)}<td class="actions">${forfeit ? `<button class="button compact" data-reinstate="${a.id}">Annuler le forfait</button>` : `<button class="button compact" data-forfeit="${a.id}">Forfait</button>`}</td></tr>`);
             }
         }
         const scoreHead = w.type === 'time' ? `TEMPS RÉALISÉ${w.capMinutes ? ` · CAP ${capText(w).toUpperCase()}` : ''}` : 'SCORE';
         const none = w.phase === 'final' && !Wod.competitors(state, w).length ? 'Aucun qualifié pour la Finale : qualifiez-les dans l’onglet 4. Classements.' : 'Ajoutez des participants dans l’onglet 1.';
-        setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', 'PLACE', ...(points ? ['POINTS'] : []), 'ACTIONS'], rows, onlyTodo && Wod.competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none);
+        setTable(['PARTICIPANT', scoreHead, 'ENREGISTRÉ', 'PLACE', ...(points ? ['POINTS'] : []), 'ACTIONS'], rows, onlyTodo && Wod.competitors(state, w).length ? 'Tous les scores de ce WOD sont saisis.' : none, ['name', null, null, 'place', ...(points ? ['points'] : []), null]);
     }
     // Place en direct sur ce WOD, dans le groupe (niveau + catégorie) : provisoire (pastille grise) tant qu’un score du groupe reste à saisir.
     function livePlaces(w, g) {
@@ -741,8 +750,8 @@ var Wod;
             const cell = (w, r) => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${Wod.STATUS_LABELS[Wod.scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
             podiumFooter(ranking.length, pending);
             const pick = (a) => `<td>${Wod.isFinalist(state, a) ? `<button class="button compact finalist-on" data-unqualify="${a.id}" title="Retirer de la Finale">✓ Qualifié</button>` : `<button class="button compact" data-qualify-one="${a.id}">Qualifier</button>`}</td>`;
-            const rows = ranking.filter(r => found(r.athlete)).map(r => `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${wods.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td>${phase === 'qualif' && final ? pick(r.athlete) : ''}</tr>`);
-            setTable(['RANG', 'PARTICIPANT', ...wods.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS', ...(phase === 'qualif' && final ? ['FINALE'] : [])], rows, phase === 'final' ? 'Aucun qualifié dans cette catégorie.' : 'Aucun participant dans cette catégorie.');
+            const rows = Tri.appliquer(ranking.filter(r => found(r.athlete)), sortState(), (r, key) => key === 'rank' ? r.rank : key === 'name' ? Wod.athleteLabel(r.athlete) : key === 'total' ? r.total : key.startsWith('wod:') ? r.places[key.slice(4)] : null).map(r => `<tr><td class="rank">${rankBadge(r.rank, !pending)}</td><td><strong>${esc(Wod.athleteLabel(r.athlete))}</strong><div class="muted">${esc(r.athlete.level ? Wod.group(r.athlete) : Wod.categoryLabel(Wod.category(r.athlete)))}</div></td>${wods.map(w => `<td>${cell(w, r)}</td>`).join('')}<td class="rank">${r.total}</td>${phase === 'qualif' && final ? pick(r.athlete) : ''}</tr>`);
+            setTable(['RANG', 'PARTICIPANT', ...wods.map(w => esc(w.name.toUpperCase())), state.method === 'places' ? 'TOTAL' : 'POINTS', ...(phase === 'qualif' && final ? ['FINALE'] : [])], rows, phase === 'final' ? 'Aucun qualifié dans cette catégorie.' : 'Aucun participant dans cette catégorie.', ['rank', 'name', ...wods.map(w => `wod:${w.id}`), 'total', null]);
             return;
         }
         const w = state.workouts.find(x => x.id === rankingTab);
@@ -751,11 +760,12 @@ var Wod;
         heading(w.name, `${Wod.TYPE_LABELS[w.type]}.${todo ? ` Provisoire : ${todo} score(s) à saisir.` : ''}`);
         const label = (a) => `<strong>${esc(Wod.athleteLabel(a))}</strong><div class="muted">${esc(a.level ? Wod.group(a) : Wod.categoryLabel(Wod.category(a)))}</div>`;
         podiumFooter(Wod.workoutRanking(state, w, cat).length, todo);
-        const rows = Wod.workoutRanking(state, w, cat).filter(p => found(p.athlete)).map(p => `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
+        // Score et points suivent la place ; les forfaits restent en bas.
+        const rows = Tri.appliquer(Wod.workoutRanking(state, w, cat).filter(p => found(p.athlete)), sortState(), (p, key) => key === 'name' ? Wod.athleteLabel(p.athlete) : key === 'points' ? Wod.pointsFor(p.rank) : p.rank).map(p => `<tr><td class="rank">${rankBadge(p.rank, !todo)}</td><td>${label(p.athlete)}</td><td class="score-saved">${esc(Wod.scoreText(w, p.score))}</td>${state.method === 'points' ? `<td>${Wod.pointsFor(p.rank)} pts</td>` : ''}</tr>`);
         for (const a of inCat)
             if (state.scores[w.id]?.[a.id]?.forfeit && found(a))
                 rows.push(`<tr><td class="rank">—</td><td>${label(a)}</td><td><span class="outcome-badge">Forfait</span></td>${state.method === 'points' ? '<td>0 pt</td>' : ''}</tr>`);
-        setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.');
+        setTable(['RANG', 'PARTICIPANT', 'SCORE', ...(state.method === 'points' ? ['POINTS'] : [])], rows, 'Aucun score saisi pour cette catégorie.', ['rank', 'name', 'score', 'points']);
     }
     // Qualifiés de la catégorie affichée : les n premiers des qualifs, puis ajustables un par un.
     function qualify() {
@@ -1291,6 +1301,9 @@ var Wod;
         } const pick = target.closest('[data-event-id]'); toggleEventList(false); if (!pick || pick.dataset.eventId === store.selectedId)
             return; selectEvent(pick.dataset.eventId || ''); $('search').value = ''; rememberEvent(); render(); });
         $('search').addEventListener('input', render);
+        // Clic sur un en-tête : croissant, décroissant, puis retour à l’ordre habituel.
+        $('table-head').addEventListener('click', e => { const key = e.target.closest('[data-sort]')?.dataset.sort; if (!key)
+            return; sortBy[sortTable()] = Tri.suivant(sortState(), key); render(); });
         $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
         $('export-button').addEventListener('click', exportExcel);
         $('backup-button').addEventListener('click', exportBackup);
