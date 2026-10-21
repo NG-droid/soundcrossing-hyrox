@@ -279,6 +279,28 @@
 .day-tabs>div>button{box-shadow:inset 0 1px 0 #ffffffd0,0 -1px 4px #1e283238}
 .day-tabs>div>button.active{box-shadow:inset 0 1px 0 #ffffff40,inset 0 -3px 0 #d8242d,0 -2px 7px #1e283240}
 .event-dd-toggle{border-color:#8f939a;box-shadow:inset 0 1px 0 #ffffffd0,0 2px 3px #1e283238}}
+/* Écrans standard, suite (Windows) : cases de choix, H/F, filtres, paramètres et petits textes gris. Sur ces écrans les teintes très pâles se confondent ; on marque le choix actif (bord rouge épais + coche) et on fonce les traits et textes secondaires. Le Mac Retina ne change pas. */
+@media(max-resolution:1.99dppx){:root{--muted:#3f4349}
+.format-choice>button,.format-choice label>span{border-color:#9fa3a9;background:linear-gradient(#fbfbfc,#e8eaed);color:#333;box-shadow:0 1px 2px #1e283226,inset 0 1px 0 #fff}
+.format-choice small{color:#4a4e54}
+.format-choice>button:hover,.format-choice label:hover>span{border-color:#7b8088}
+.format-choice>button[aria-pressed=true],.format-choice label:has(input:checked)>span{position:relative;border-color:#d8242d;background:#ffe3e5;color:#a41921;box-shadow:inset 0 0 0 2px #d8242d,0 2px 5px #b0171f40}
+.format-choice>button[aria-pressed=true] small,.format-choice label:has(input:checked)>span small{color:#8a1a20}
+.format-choice>button[aria-pressed=true]:after,.format-choice label:has(input:checked)>span:after{content:'';position:absolute;top:7px;right:7px;width:18px;height:18px;border-radius:50%;background:#d8242d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") no-repeat center/12px}
+.gender-choice button{border-color:#9fa3a9;background:linear-gradient(#fbfbfc,#e8eaed);color:#333;box-shadow:0 1px 2px #1e283226,inset 0 1px 0 #fff}
+.gender-choice button[aria-pressed=true]{background:#d8242d;border-color:#a3141c;color:#fff;box-shadow:0 2px 5px #b0171f73,inset 0 1px 0 #ff8a90}
+.format-chip{border-color:#8f939a;color:#333}
+.format-chip.active{background:#ffe3e5;border-color:#d8242d;box-shadow:inset 0 0 0 1px #d8242d}
+.settings-section,.modal-footer,.list-toolbar{border-color:#a3a6ab}
+.modal-note,.help-steps p,.format-field legend,.registration-category{color:#3f4349}
+.course-context,.registration-category,.arrival-modal .course-context{background:#eceef1;border:1px solid #c3c6cb;color:#222}
+.registration-category.complete{background:#ffe3e5;border-color:#e4a5aa;color:#a41921}
+.icon-button{background:#e4e6e9;border:1px solid #a3a6ab;color:#333}
+.search,.modal input,.modal select,.settings-modal select{border-color:#8f939a}
+.race-table th{color:#2f3237}
+.wod-picker{border-color:#8f939a}.wod-picker button{border-left-color:#a3a6ab}.wod-picker button small{color:#45494f}
+.button.danger{border-color:#c98a8f;border-bottom-color:#a8636a}
+.training-banner{border-color:#9fa3a9;background:repeating-linear-gradient(135deg,#fff 0 14px,#e9eae6 14px 28px)}}
 
 /* Diplômes de participation (Hyrox et WOD) : invisibles à l’écran, une page A4 par participant à l’impression. */
 .diplome-print{display:none}
