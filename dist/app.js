@@ -1547,6 +1547,7 @@ var PaceApp;
     document.addEventListener('visibilitychange', tick);
     load();
     render();
+    document.documentElement.classList.remove('chargement');
     void syncDisk();
     Sauvegarde.precharger('wod');
     Temoin.surveiller(() => { void syncDisk(); });
