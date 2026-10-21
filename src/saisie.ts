@@ -121,15 +121,25 @@ namespace Temoin {
     if (valeur === 'attente') { lenteur = window.setTimeout(() => { disque = 'attente'; afficher(); }, 600); return; }
     disque = valeur; if (valeur === 'ok' && savedAt) depuis = savedAt; afficher();
   }
+  // Version en bas des Paramètres (Hyrox et WOD) : n° court du dernier changement et sa date, donnés par le lanceur.
+  function version(v?: { id?: unknown; date?: unknown }): void {
+    const el = document.getElementById('app-version');
+    if (!el) return;
+    if (v && typeof v.id === 'string' && typeof v.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.date)) {
+      const [y, m, d] = v.date.split('-');
+      el.textContent = `Version du ${d}/${m}/${y} · ${v.id}`;
+    } else el.textContent = 'Version : inconnue';
+  }
   // Vérifie toutes les 10 s que le lanceur répond ; quand il revient, relancer() recopie les données.
   export function surveiller(relancer: () => void): void {
-    if (typeof fetch !== 'function' || location.protocol === 'file:') { etat('navigateur'); return; }
+    if (typeof fetch !== 'function' || location.protocol === 'file:') { etat('navigateur'); version(); return; }
     const ping = async (): Promise<void> => {
       try {
         const response = await fetch('/health', { cache: 'no-store' });
         if (!response.ok) throw Error();
-        const info = await response.json() as { data?: unknown };
+        const info = await response.json() as { data?: unknown; version?: { id?: unknown; date?: unknown } };
         if (typeof info.data === 'string' && info.data !== dossier) { dossier = info.data; afficher(); }
+        version(info.version);
         if (disque === 'erreur') relancer();
       } catch { etat('erreur'); }
     };
