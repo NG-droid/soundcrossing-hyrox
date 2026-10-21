@@ -965,7 +965,7 @@ namespace Wod {
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    load(); bind(); render(); savedStatus(storageBlocked); void syncDisk(); Sauvegarde.precharger('hyrox'); Temoin.surveiller(() => { void syncDisk(); });
+    load(); bind(); render(); document.documentElement.classList.remove('chargement'); savedStatus(storageBlocked); void syncDisk(); Sauvegarde.precharger('hyrox'); Temoin.surveiller(() => { void syncDisk(); });
     // Une autre fenêtre a enregistré : on affiche sa version au lieu de l’écraser plus tard.
     window.addEventListener('storage', event => {
       if (event.key !== KEY && event.key !== null) return;

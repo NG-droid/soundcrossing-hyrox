@@ -1001,5 +1001,5 @@ namespace PaceApp {
     catch { storageBlocked = true; savedStatus(true); toast('La sauvegarde externe est illisible. Exportez la session actuelle.', true); }
   });
   window.addEventListener('pageshow', tick); document.addEventListener('visibilitychange', tick);
-  load(); render(); void syncDisk(); Sauvegarde.precharger('wod'); Temoin.surveiller(() => { void syncDisk(); }); window.setInterval(tick, 1000);
+  load(); render(); document.documentElement.classList.remove('chargement'); void syncDisk(); Sauvegarde.precharger('wod'); Temoin.surveiller(() => { void syncDisk(); }); window.setInterval(tick, 1000);
 }

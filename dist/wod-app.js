@@ -1425,6 +1425,7 @@ var Wod;
         load();
         bind();
         render();
+        document.documentElement.classList.remove('chargement');
         savedStatus(storageBlocked);
         void syncDisk();
         Sauvegarde.precharger('hyrox');
