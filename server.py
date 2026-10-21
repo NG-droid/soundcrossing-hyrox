@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 from urllib.parse import urlparse, unquote
+from datetime import datetime
 import hashlib
 import io
 import os
@@ -55,7 +56,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = unquote(urlparse(self.path).path)
         if path == "/health":
-            body = json.dumps({"app": "pace-hyrox", "identity": IDENTITY, "data": str(DATA_FILE.parent), "code": CODE}).encode()
+            body = json.dumps({"app": "pace-hyrox", "identity": IDENTITY, "data": str(DATA_FILE.parent), "code": CODE,
+                               "version": app_version()}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -164,6 +166,29 @@ VERSION_FILE = ROOT / "VERSION"
 # Fichiers remplacés par une mise à jour. runtime/ n’est jamais touché : Python ne change pas d’une version à l’autre.
 # Le .bat peut l’être : cmd lit en entier le bloc « if exist … ( … ) » qui lance Python avant de l’exécuter,
 # il ne relit donc plus le fichier pendant que le serveur tourne. Le .exe en marche est renommé (voir replace()).
+_version = None
+
+
+def app_version():
+    """Version affichée dans les Paramètres : n° court du dernier changement et sa date.
+    Mac (dossier git) : dernier commit. Windows : fichier VERSION écrit par la mise à jour, daté du jour où elle a été installée."""
+    global _version
+    if _version is None:
+        _version = {}
+        try:
+            if (ROOT / ".git").exists():
+                out = subprocess.run(["git", "log", "-1", "--format=%h %cs"], cwd=ROOT, timeout=5,
+                                     capture_output=True, text=True, check=False).stdout.split()
+                if len(out) == 2:
+                    _version = {"id": out[0], "date": out[1]}
+            elif VERSION_FILE.exists():
+                stamp = datetime.fromtimestamp(VERSION_FILE.stat().st_mtime).date().isoformat()
+                _version = {"id": VERSION_FILE.read_text(encoding="utf-8").strip()[:7], "date": stamp}
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+    return _version
+
+
 UPDATABLE = (
     "index.html", "styles.css", "club.css", "server.py",
     "assets/soundcrossing-logo.jpg", "assets/soundcrossing-logo.png", "assets/ORIGINE.md",

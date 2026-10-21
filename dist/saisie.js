@@ -178,10 +178,23 @@ var Temoin;
         afficher();
     }
     Temoin.etat = etat;
+    // Version en bas des Paramètres (Hyrox et WOD) : n° court du dernier changement et sa date, donnés par le lanceur.
+    function version(v) {
+        const el = document.getElementById('app-version');
+        if (!el)
+            return;
+        if (v && typeof v.id === 'string' && typeof v.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.date)) {
+            const [y, m, d] = v.date.split('-');
+            el.textContent = `Version du ${d}/${m}/${y} · ${v.id}`;
+        }
+        else
+            el.textContent = 'Version : inconnue';
+    }
     // Vérifie toutes les 10 s que le lanceur répond ; quand il revient, relancer() recopie les données.
     function surveiller(relancer) {
         if (typeof fetch !== 'function' || location.protocol === 'file:') {
             etat('navigateur');
+            version();
             return;
         }
         const ping = async () => {
@@ -194,6 +207,7 @@ var Temoin;
                     dossier = info.data;
                     afficher();
                 }
+                version(info.version);
                 if (disque === 'erreur')
                     relancer();
             }

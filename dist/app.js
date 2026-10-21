@@ -410,9 +410,9 @@ var PaceApp;
         $('import-button').disabled = !race;
         $('template-button').disabled = $('list-template').disabled = !race;
         $('excel-help-button').disabled = !race;
-        $('settings-event-context').textContent = race ? `${race.title} · ${raceLabel(race)} · ${eventFormatLabel(race)}` : 'Créez un événement pour préparer ou exporter ses fichiers.';
+        $('settings-event-context').textContent = race ? `${race.title} · ${raceLabel(race)} · ${eventFormatLabel(race)}` : 'Aucun événement : créez-en un pour préparer ou exporter ses fichiers.';
         $('export-button').textContent = view === 'results' ? 'Exporter le classement (Excel)' : 'Exporter la liste (Excel)';
-        $('settings-export-hint').textContent = !race ? '' : `${view === 'results' ? 'Excel : classement de la catégorie affichée, ou de toutes les catégories si aucun filtre n’est actif.' : 'Excel : toutes les inscriptions de la journée, avec leurs horaires et résultats.'} ${finalResults ? 'CSV final : tous les formats de la journée, forfaits inclus.' : 'CSV final disponible lorsque toutes les inscriptions ont un résultat ou un forfait.'}`;
+        $('settings-export-hint').textContent = !race ? 'Excel des inscriptions et résultats.' : `${view === 'results' ? 'Excel : classement affiché.' : 'Excel : inscriptions, horaires et résultats.'} ${finalResults ? 'CSV final : tous les formats, forfaits inclus.' : 'CSV final : quand tout le monde a un résultat ou un forfait.'}`;
         $('empty-title').textContent = race ? 'La liste de départ est prête à remplir.' : 'Préparez votre événement Soundcrossing.';
         $('empty-description').textContent = race ? race.format === 'DUO' ? 'Ajoutez les duos HH/FF/HF et leurs heures de départ.' : race.format === 'SOLO' ? 'Ajoutez les solos H/F et leurs heures de départ.' : 'Ajoutez des solos H/F ou des duos HH/FF/HF, puis leurs heures de départ.' : 'Donnez un nom, une date et un format à l’événement.';
         $('empty-add').textContent = race ? 'Ajouter les participants' : 'Créer un événement';
@@ -435,8 +435,7 @@ var PaceApp;
         $('photo-template').value = state.settings.photoTemplate;
         $('show-podium-button').disabled = !finalResults || !resultRanking().length;
         $('show-podium-button').title = finalResults ? 'Afficher le top 3 final en plein écran, par catégorie.' : 'Disponible lorsque toutes les inscriptions ont un résultat ou un forfait.';
-        $('data-description').textContent = `${state.session.entries.length} inscriptions dans ${state.session.races.length} événement(s). Les données sont enregistrées dans ce navigateur, sur cet ordinateur, pour ${location.origin}.`;
-        $('last-save').textContent = state.savedAt ? `Dernier enregistrement : ${new Date(state.savedAt).toLocaleString('fr-FR')}` : 'Les prochaines modifications seront enregistrées automatiquement.';
+        $('data-description').textContent = `${state.session.entries.length} inscriptions, ${state.session.races.length} événement(s). À faire après chaque événement.`;
     }
     function tick() {
         $('wall-clock').textContent = new Date().toLocaleTimeString('fr-FR');
