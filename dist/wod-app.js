@@ -1346,9 +1346,9 @@ var Wod;
         // Clic sur un en-tête : croissant, décroissant, puis retour à l’ordre habituel.
         $('table-head').addEventListener('click', e => { const key = e.target.closest('[data-sort]')?.dataset.sort; if (!key)
             return; sortBy[sortTable()] = Tri.suivant(sortState(), key); render(); });
-        $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
+        $('settings-button').addEventListener('click', () => { Sauvegarde.precharger('hyrox'); $('settings-dialog').showModal(); });
         $('export-button').addEventListener('click', exportExcel);
-        $('backup-button').addEventListener('click', exportBackup);
+        $('backup-button').addEventListener('click', () => exportBackup());
         $('restore-button').addEventListener('click', () => $('restore-file').click());
         $('restore-file').addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
@@ -1358,20 +1358,25 @@ var Wod;
             try {
                 if (file.size > 15 * 1024 * 1024)
                     throw Error('Sauvegarde trop volumineuse.');
-                // Mêmes règles qu’à la saisie : temps nul, au-delà du cap, temps et reps ensemble… sont refusés.
-                const imported = Wod.validateStore(JSON.parse(await file.text()), true);
-                const athletes = imported.events.reduce((n, ev) => n + ev.athletes.length, 0);
-                ask('Restaurer cette sauvegarde ?', `Elle contient ${imported.events.length} événement(s) et ${athletes} inscription(s). Les données WOD actuelles seront remplacées. Une sauvegarde des données actuelles sera téléchargée avant le remplacement.`, () => {
-                    if (store.events.length)
-                        exportBackup();
-                    store = imported;
-                    selectEvent(imported.selectedId);
-                    rememberEvent();
-                    if (!save(true))
+                const parts = Sauvegarde.lire(await file.text());
+                // Les deux parties sont vérifiées avant de remplacer quoi que ce soit (WOD : mêmes règles qu’à la saisie).
+                const hyrox = Sauvegarde.verifier('hyrox', parts.hyrox, v => Pace.validateStore(v)), imported = Sauvegarde.verifier('wod', parts.wod, v => Wod.validateStore(v, true));
+                ask('Restaurer cette sauvegarde ?', Sauvegarde.message(hyrox, imported), () => {
+                    exportBackup(true);
+                    if (imported) {
+                        store = imported;
+                        selectEvent(imported.selectedId);
+                        rememberEvent();
+                        if (!save(true))
+                            return;
+                        render();
+                    }
+                    if (hyrox && !Sauvegarde.remplacer('hyrox', hyrox, v => Pace.validateStore(v))) {
+                        toast('Les données Hyrox n’ont pas pu être remplacées dans ce navigateur.');
                         return;
-                    render();
+                    }
                     $('settings-dialog').close();
-                    toast('Sauvegarde restaurée.');
+                    toast(Sauvegarde.restaure(hyrox, imported));
                 }, 'Sauvegarder et restaurer');
             }
             catch (error) {
@@ -1410,13 +1415,19 @@ var Wod;
         localStorage.setItem(EVENT_KEY, state.id);
     }
     catch { /* Vue facultative. */ } }
-    function exportBackup() { download(`sauvegarde-wod-${today()}.json`, JSON.stringify({ ...store, selectedId: state.id, history: [] }, null, 2), 'application/json'); }
+    // Un seul fichier pour le WOD et l’Hyrox. securite : copie des données actuelles juste avant une restauration.
+    function exportBackup(securite = false) {
+        download(Sauvegarde.nom(securite), Sauvegarde.contenu(Sauvegarde.autre('hyrox', v => Pace.validateStore(v)), { ...store, selectedId: state.id }), 'application/json');
+        if (!securite)
+            toast('Sauvegarde exportée (Hyrox et WOD). Conservez le fichier téléchargé.');
+    }
     document.addEventListener('DOMContentLoaded', () => {
         load();
         bind();
         render();
         savedStatus(storageBlocked);
         void syncDisk();
+        Sauvegarde.precharger('hyrox');
         Temoin.surveiller(() => { void syncDisk(); });
         // Une autre fenêtre a enregistré : on affiche sa version au lieu de l’écraser plus tard.
         window.addEventListener('storage', event => {
