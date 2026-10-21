@@ -178,17 +178,20 @@ var Temoin;
         afficher();
     }
     Temoin.etat = etat;
-    // Version en bas des Paramètres (Hyrox et WOD) : n° court du dernier changement et sa date, donnés par le lanceur.
+    // Version en bas des Paramètres (Hyrox et WOD), donnée par le lanceur : « Version 57 · 21 octobre 2026 ».
+    const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    function texteVersion(v) {
+        const date = v && typeof v.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.date) : null;
+        if (!date)
+            return 'Version inconnue';
+        const jour = `${Number(date[3]) === 1 ? '1er' : Number(date[3])} ${MOIS[Number(date[2]) - 1]} ${date[1]}`;
+        return typeof v?.numero === 'string' && /^\d+$/.test(v.numero) ? `Version ${v.numero} · ${jour}` : `Version du ${jour}`;
+    }
+    Temoin.texteVersion = texteVersion;
     function version(v) {
         const el = document.getElementById('app-version');
-        if (!el)
-            return;
-        if (v && typeof v.id === 'string' && typeof v.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.date)) {
-            const [y, m, d] = v.date.split('-');
-            el.textContent = `Version du ${d}/${m}/${y} · ${v.id}`;
-        }
-        else
-            el.textContent = 'Version : inconnue';
+        if (el)
+            el.textContent = texteVersion(v);
     }
     // Vérifie toutes les 10 s que le lanceur répond ; quand il revient, relancer() recopie les données.
     function surveiller(relancer) {

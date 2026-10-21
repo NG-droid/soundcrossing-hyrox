@@ -3,6 +3,7 @@ from hashlib import sha256
 from io import BytesIO
 import json
 import os
+import re
 import subprocess
 from pathlib import Path, PurePosixPath
 from urllib.request import urlopen
@@ -49,6 +50,15 @@ def launcher() -> Path:
     return output
 
 
+def version_text() -> str:
+    """« commit numéro date » : le commit sert à la mise à jour, le numéro et la date à l’affichage (voir app_version)."""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    sha = os.environ.get("GITHUB_SHA") or git("rev-parse", "HEAD")
+    merge = re.match(r"Merge pull request #(\d+)", git("log", "-1", "--first-parent", "--format=%s", "--grep=^Merge pull request #"))
+    return f"{sha} {merge.group(1) if merge else '-'} {git('log', '-1', '--format=%cs')}"
+
+
 def build() -> Path:
     data = runtime_bytes()
     exe = launcher()
@@ -74,10 +84,11 @@ def build() -> Path:
                         "runtime_source": URL, "runtime_sha256": SHA256,
                         "release": f"https://www.python.org/downloads/release/python-{VERSION.replace('.', '')}/",
                         "validation": "Archive et serveur vérifiés sur Mac ; lancement Windows à vérifier sur un PC."}
-            version = os.environ.get("GITHUB_SHA") or subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-            archive.writestr(f"{PREFIX}VERSION", version)
+            archive.writestr(f"{PREFIX}VERSION", version_text())
             archive.writestr(f"{PREFIX}DISTRIBUTION.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
         pending.replace(output)
+        # Même texte que le VERSION du ZIP : la mise à jour compare les deux.
+        (output.parent / "VERSION.txt").write_text(version_text(), encoding="utf-8")
     except Exception:
         pending.unlink(missing_ok=True)
         raise

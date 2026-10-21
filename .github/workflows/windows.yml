@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # historique complet : numéro de version (dernier « Merge pull request #… »)
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,7 +29,6 @@ jobs:
       - name: Tests du serveur (port et données temporaires)
         run: python -m unittest tests/test_server_data.py
       - run: npm run pack-windows
-      - run: echo "$GITHUB_SHA" > livraison/VERSION.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Soundcrossing-Windows-x64

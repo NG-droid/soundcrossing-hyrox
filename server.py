@@ -9,6 +9,7 @@ from datetime import datetime
 import hashlib
 import io
 import os
+import re
 import shutil
 import subprocess
 import zipfile
@@ -169,21 +170,31 @@ VERSION_FILE = ROOT / "VERSION"
 _version = None
 
 
+def git_version(root):
+    """Numéro et date de la version d’un dossier git : n° du dernier changement fusionné (« Merge pull request #57 »)
+    et date du dernier commit. Sans fusion trouvée, le numéro est vide."""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=root, timeout=5, capture_output=True, text=True, check=False).stdout.strip()
+    merge = re.match(r"Merge pull request #(\d+)", git("log", "-1", "--first-parent", "--format=%s", "--grep=^Merge pull request #"))
+    return {"numero": merge.group(1) if merge else "", "date": git("log", "-1", "--format=%cs")}
+
+
 def app_version():
-    """Version affichée dans les Paramètres : n° court du dernier changement et sa date.
-    Mac (dossier git) : dernier commit. Windows : fichier VERSION écrit par la mise à jour, daté du jour où elle a été installée."""
+    """Version affichée dans les Paramètres : « Version 57 · 21 octobre 2026 ».
+    Mac (dossier git) : lue dans git. Windows : fichier VERSION « commit numéro date » écrit à la publication ;
+    un ancien fichier (commit seul) donne la date d’installation, sans numéro."""
     global _version
     if _version is None:
         _version = {}
         try:
             if (ROOT / ".git").exists():
-                out = subprocess.run(["git", "log", "-1", "--format=%h %cs"], cwd=ROOT, timeout=5,
-                                     capture_output=True, text=True, check=False).stdout.split()
-                if len(out) == 2:
-                    _version = {"id": out[0], "date": out[1]}
+                _version = git_version(ROOT)
             elif VERSION_FILE.exists():
-                stamp = datetime.fromtimestamp(VERSION_FILE.stat().st_mtime).date().isoformat()
-                _version = {"id": VERSION_FILE.read_text(encoding="utf-8").strip()[:7], "date": stamp}
+                parts = VERSION_FILE.read_text(encoding="utf-8").split()
+                if len(parts) >= 3:
+                    _version = {"numero": parts[1] if parts[1].isdigit() else "", "date": parts[2]}
+                else:
+                    _version = {"numero": "", "date": datetime.fromtimestamp(VERSION_FILE.stat().st_mtime).date().isoformat()}
         except (OSError, subprocess.SubprocessError, ValueError):
             pass
     return _version
