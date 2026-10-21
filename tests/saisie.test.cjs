@@ -71,3 +71,11 @@ test('une seule case de temps partout : même classe, --:--:-- ou --:-- (départ
   assert.doesNotMatch(html, /type="time"/);
   for (const name of ['scheduled', 'arrival', 'duration']) assert.match(html, new RegExp(`class="score-time time-box" name="${name}"`));
 });
+
+test('version des Paramètres : numéro et date en clair', () => {
+  const T = context.Temoin;
+  assert.equal(T.texteVersion({ numero: '57', date: '2026-10-21' }), 'Version 57 · 21 octobre 2026');
+  assert.equal(T.texteVersion({ numero: '', date: '2026-08-01' }), 'Version du 1er août 2026');
+  assert.equal(T.texteVersion({}), 'Version inconnue');
+  assert.equal(T.texteVersion(), 'Version inconnue');
+});
