@@ -311,7 +311,7 @@ namespace PaceApp {
     $<HTMLSelectElement>('photo-template').value = state.settings.photoTemplate;
     $<HTMLButtonElement>('show-podium-button').disabled = !finalResults || !resultRanking().length;
     $('show-podium-button').title = finalResults ? 'Afficher le top 3 final en plein écran, par catégorie.' : 'Disponible lorsque toutes les inscriptions ont un résultat ou un forfait.';
-    $('data-description').textContent = `${state.session.entries.length} inscriptions, ${state.session.races.length} événement(s). À faire après chaque événement.`;
+    $('data-description').textContent = `${state.session.entries.length} inscriptions, ${state.session.races.length} événement(s). Après chaque événement : un seul fichier pour l’Hyrox et le WOD.`;
   }
   function tick(): void {
     $('wall-clock').textContent = new Date().toLocaleTimeString('fr-FR');
@@ -665,7 +665,11 @@ namespace PaceApp {
     const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
     a.href = url; a.download = name; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
-  function exportBackup(): void { download(JSON.stringify(state, null, 2), `pace-session-${state.session.date}.json`, 'application/json'); toast('Sauvegarde exportée. Conservez le fichier téléchargé.'); }
+  // Un seul fichier pour l’Hyrox et le WOD. securite : copie des données actuelles juste avant une restauration.
+  function exportBackup(securite = false): void {
+    download(Sauvegarde.contenu(state, Sauvegarde.autre('wod', v => Wod.validateStore(v))), Sauvegarde.nom(securite), 'application/json');
+    if (!securite) toast('Sauvegarde exportée (Hyrox et WOD). Conservez le fichier téléchargé.');
+  }
   function exportFinalCSV(): void {
     try {
       const race = currentRace(); if (!race) throw Error('Créez un événement.');
@@ -765,11 +769,19 @@ namespace PaceApp {
   async function restore(file: File): Promise<void> {
     try {
       if (file.size > 15 * 1024 * 1024) throw Error('Sauvegarde trop volumineuse.');
-      const imported = validateStore(JSON.parse(await file.text()));
+      const parts = Sauvegarde.lire(await file.text());
+      // Les deux parties sont vérifiées avant de remplacer quoi que ce soit (WOD : mêmes règles qu’à la saisie).
+      const imported = Sauvegarde.verifier('hyrox', parts.hyrox, validateStore), wod = Sauvegarde.verifier('wod', parts.wod, v => Wod.validateStore(v, true));
       const expectedRaw = localStorage.getItem(KEY);
-      ask('Restaurer cette session ?', `« ${imported.session.title} » contient ${imported.session.entries.length} départs. La liste actuelle sera remplacée. Une sauvegarde de la session actuelle sera téléchargée avant le remplacement.`, () => {
-        exportBackup(); imported.revision = crypto.randomUUID(); imported.savedAt = Date.now();
-        if (persist(imported, true, expectedRaw)) { focusId = ''; selectedRaceId = ''; render(); toast('Courses, horaires et résultats restaurés.'); }
+      ask('Restaurer cette sauvegarde ?', Sauvegarde.message(imported, wod), () => {
+        exportBackup(true);
+        if (imported) {
+          imported.revision = crypto.randomUUID(); imported.savedAt = Date.now();
+          if (!persist(imported, true, expectedRaw)) return;
+          focusId = ''; selectedRaceId = ''; render();
+        }
+        if (wod && !Sauvegarde.remplacer('wod', wod, v => Wod.validateStore(v))) { toast('Les données WOD n’ont pas pu être remplacées dans ce navigateur.', true); return; }
+        $<HTMLDialogElement>('settings-dialog').close(); toast(Sauvegarde.restaure(imported, wod));
       }, 'Sauvegarder et restaurer');
     } catch (error) { toast(error instanceof Error ? error.message : 'Sauvegarde invalide.', true); }
   }
@@ -897,8 +909,8 @@ namespace PaceApp {
   $('csv-final-button').addEventListener('click', exportFinalCSV);
   $('show-podium-button').addEventListener('click', openPodiumChooser);
   $('diploma-button').addEventListener('click', printDiplomas);
-  $('settings-button').addEventListener('click', () => $<HTMLDialogElement>('settings-dialog').showModal());
-  $('backup-button').addEventListener('click', exportBackup);
+  $('settings-button').addEventListener('click', () => { Sauvegarde.precharger('wod'); $<HTMLDialogElement>('settings-dialog').showModal(); });
+  $('backup-button').addEventListener('click', () => exportBackup());
   $('restore-button').addEventListener('click', () => $<HTMLInputElement>('restore-file').click());
   $('help-button').addEventListener('click', () => $<HTMLDialogElement>('help-dialog').showModal());
   $('photo-template').addEventListener('change', () => {
@@ -989,5 +1001,5 @@ namespace PaceApp {
     catch { storageBlocked = true; savedStatus(true); toast('La sauvegarde externe est illisible. Exportez la session actuelle.', true); }
   });
   window.addEventListener('pageshow', tick); document.addEventListener('visibilitychange', tick);
-  load(); render(); void syncDisk(); Temoin.surveiller(() => { void syncDisk(); }); window.setInterval(tick, 1000);
+  load(); render(); void syncDisk(); Sauvegarde.precharger('wod'); Temoin.surveiller(() => { void syncDisk(); }); window.setInterval(tick, 1000);
 }
