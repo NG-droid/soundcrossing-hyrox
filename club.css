@@ -401,8 +401,6 @@ input.time-box:disabled:placeholder-shown,input.score-num:disabled:placeholder-s
 .event-dd-list:not([hidden]){animation:sc-drop .15s cubic-bezier(.23,1,.32,1)}
 /* Mouvements réduits (réglage du Mac ou de Windows) : on garde les fondus, sans déplacement ni zoom */
 @media(prefers-reduced-motion:reduce){.modal[open],.toast:not([hidden]),.event-dd-list:not([hidden]){animation-name:sc-fade}}
-/* Passage Hyrox ↔ WOD : fondu entre les deux pages, et le contenu reste caché tant qu'il n'est pas prêt (plus de reste de l'ancienne page). Montré quand même après 1,5 s par sécurité. */
-@view-transition{navigation:auto}
-::view-transition-old(root),::view-transition-new(root){animation-duration:.15s}
+/* Passage Hyrox ↔ WOD : le contenu reste caché tant que l'application ne l'a pas rempli (plus de reste de l'ancienne page). Montré quand même après 0,4 s par sécurité. */
 @keyframes sc-montrer{to{visibility:visible}}
-html.chargement body>:not(.club-header){visibility:hidden;animation:sc-montrer 0s 1.5s forwards}
+html.chargement body>:not(.club-header){visibility:hidden;animation:sc-montrer 0s .4s forwards}
