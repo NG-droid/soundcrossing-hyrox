@@ -390,3 +390,14 @@ input.time-box:disabled:placeholder-shown,input.score-num:disabled:placeholder-s
 .settings-body .settings-actions .button{white-space:nowrap}
 @media(max-width:700px){.settings-body .settings-section{grid-template-columns:1fr}.settings-body .settings-actions{justify-content:flex-start;flex-wrap:wrap}.settings-modal>.modal-footer{flex-wrap:wrap}}
 @media(max-resolution:1.99dppx){.settings-modal>.modal-heading,.settings-modal>.modal-footer{border-color:#a3a6ab}.settings-body .settings-section{border-top-color:#b9bdc3}.settings-context,.settings-version{color:#3f4349}}
+/* Apparitions douces : fenêtres, messages et menu Événement (ouverture seulement, la fermeture reste immédiate) */
+@keyframes sc-pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+@keyframes sc-fade{from{opacity:0}to{opacity:1}}
+@keyframes sc-toast{from{opacity:0;transform:translateX(-50%) scale(.97)}to{opacity:1;transform:translateX(-50%)}}
+@keyframes sc-drop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.modal[open]{animation:sc-pop .19s cubic-bezier(.23,1,.32,1)}
+.modal[open]::backdrop{animation:sc-fade .19s ease-out}
+.toast:not([hidden]){animation:sc-toast .19s cubic-bezier(.23,1,.32,1)}
+.event-dd-list:not([hidden]){animation:sc-drop .15s cubic-bezier(.23,1,.32,1)}
+/* Mouvements réduits (réglage du Mac ou de Windows) : on garde les fondus, sans déplacement ni zoom */
+@media(prefers-reduced-motion:reduce){.modal[open],.toast:not([hidden]),.event-dd-list:not([hidden]){animation-name:sc-fade}}
