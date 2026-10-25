@@ -223,3 +223,54 @@ var Temoin;
     }
     Temoin.surveiller = surveiller;
 })(Temoin || (Temoin = {}));
+// Thème de l’application (Paramètres → Apparence), partagé par l’Hyrox et le WOD : « blanc » ou « black ».
+// Le choix est gardé dans ce navigateur ; un petit script dans <head> l’applique avant l’affichage.
+var Theme;
+(function (Theme) {
+    const CLE = 'soundcrossing-theme';
+    function lire() {
+        try {
+            return localStorage.getItem(CLE) === 'black' ? 'black' : 'blanc';
+        }
+        catch {
+            return 'blanc';
+        }
+    }
+    Theme.lire = lire;
+    function appliquer(nom) {
+        const root = document.documentElement;
+        if (nom === 'black')
+            root.dataset.theme = 'black';
+        else
+            delete root.dataset.theme;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', nom === 'black' ? '#141518' : '#eceef0');
+        document.querySelectorAll('[data-theme-choice]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === nom)));
+    }
+    Theme.appliquer = appliquer;
+    function choisir(nom) {
+        try {
+            if (nom === 'black')
+                localStorage.setItem(CLE, 'black');
+            else
+                localStorage.removeItem(CLE);
+        }
+        catch { /* stockage bloqué : le thème vaut pour cette page seulement */ }
+        appliquer(nom);
+    }
+    Theme.choisir = choisir;
+    // Branché seulement dans une vraie page (pas dans les tests, où document est simulé).
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function' && typeof document.querySelectorAll === 'function') {
+        document.addEventListener('click', event => {
+            const bouton = event.target?.closest?.('[data-theme-choice]');
+            if (bouton)
+                choisir(bouton.dataset.themeChoice === 'black' ? 'black' : 'blanc');
+        });
+        // L’autre fenêtre (Hyrox ou WOD) suit le changement tout de suite.
+        window.addEventListener('storage', event => { if (event.key === CLE)
+            appliquer(lire()); });
+        if (document.readyState === 'loading')
+            document.addEventListener('DOMContentLoaded', () => appliquer(lire()));
+        else
+            appliquer(lire());
+    }
+})(Theme || (Theme = {}));
