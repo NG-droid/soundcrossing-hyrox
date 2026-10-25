@@ -2,9 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light"><meta name="theme-color" content="#182422"><meta name="description" content="Classements en plein écran pour le public : les catégories défilent toutes seules.">
+  <meta name="color-scheme" content="light dark"><meta name="theme-color" content="#182422"><meta name="description" content="Classements en plein écran pour le public : les catégories défilent toutes seules.">
   <title>Soundcrossing — Écran classement</title>
   <link rel="icon" type="image/png" href="assets/favicon.png">
+  <script>/* Thème de l’app (Paramètres → Apparence) ou ?theme=black, appliqué avant l’affichage (pas de flash blanc). */try{var t=new URLSearchParams(location.search).get('theme');if(t!=='black'&&t!=='blanc')t=localStorage.getItem('soundcrossing-theme');if(t==='black')document.documentElement.dataset.theme='black'}catch(e){}</script>
   <style>
     *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}
     body{background:#d4d5d8;color:#171717;font-family:Arial,Helvetica,sans-serif}
@@ -42,9 +43,37 @@
     .screen-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #b9bdc2;padding:1.2vh 0 1.4vh;margin-top:1vh;color:#5a5a5a;font-size:clamp(10px,1.6vh,18px);letter-spacing:2px}
     .screen-foot strong{color:#b62029}
     .progress{height:5px;background:#c9ccd1}.progress i{display:block;height:100%;width:0;background:#d8242d}
+    /* Prochains départs : heure de la vague en pastille ; la prochaine vague en rouge. */
+    .wave{display:inline-grid;place-items:center;min-width:9vh;height:5.2vh;padding:0 1.2vh;border-radius:8px;background:linear-gradient(#3a3a3a,#141414);border:1px solid #000;color:#fff;font-size:clamp(16px,3.1vh,40px);font-weight:850;box-shadow:inset 0 1px 0 #ffffff30,0 2px 4px #0003}
+    .wave.next{background:linear-gradient(#ef4a52,#d8242d 50%,#b5161f);border-color:#7a0d13;box-shadow:inset 0 1px 0 #ff9aa0,0 2px 6px #d8242d55}
+    .is-next .board-row:not(.board-head)>span.value{font-size:clamp(14px,2.6vh,34px);color:#444;font-weight:650}
     .paused{position:fixed;top:2vh;right:2vw;background:#1b1b1b;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;letter-spacing:1px}
     .hint{position:fixed;left:50%;bottom:5vh;transform:translateX(-50%);background:#1b1b1bd9;color:#fff;border-radius:10px;padding:10px 16px;font-size:14px;transition:opacity .4s}
     body.idle .hint{opacity:0}
+    /* Thème Black (comme l’app) : fond noir profond, lignes gris anthracite en relief, même rouge, médailles inchangées. */
+    :root[data-theme=black]{color-scheme:dark}
+    :root[data-theme=black] body{background:#0d0e10;color:#eceef1}
+    :root[data-theme=black] .screen{background:radial-gradient(ellipse at 50% 30%,#1c1d21 0,#0d0e10 75%)}
+    :root[data-theme=black] .screen-top img{content:url(assets/soundcrossing-logo-black.png);mix-blend-mode:normal}
+    :root[data-theme=black] .screen-event span{color:#9a9fa7}
+    :root[data-theme=black] .screen-bar{background:linear-gradient(#000,#0a0a0b);border:1px solid #3d4046;box-shadow:inset 0 1px 0 #ffffff1f,inset 0 -4px 0 #d8242d,0 6px 18px #000a}
+    :root[data-theme=black] .board-row>span{background:linear-gradient(#25272b,#1a1b1e);border-top-color:#3d4046;border-bottom-color:#111214;color:#eceef1;box-shadow:inset 0 1px 0 #ffffff12,0 3px 8px #0009}
+    :root[data-theme=black] .board-row>span:first-child{border-left-color:#2e3035}
+    :root[data-theme=black] .board-row>span:last-child{border-right-color:#2e3035}
+    :root[data-theme=black] .board-head>span{background:none;box-shadow:none;color:#9a9fa7}
+    :root[data-theme=black] .names i{color:#7d828a}
+    :root[data-theme=black] .rank{background:#2a2c31;border-color:#43464d;color:#eceef1}
+    :root[data-theme=black] .rank.provisional{color:#c2c6cc}
+    :root[data-theme=black] .rank.rank-1{background:linear-gradient(#f7e08a,#d4a12a);border-color:#a97c12;color:#3a2a00}
+    :root[data-theme=black] .rank.rank-2{background:linear-gradient(#e4e8ec,#aab3bd);border-color:#949ea9;color:#1b1b1b}
+    :root[data-theme=black] .rank.rank-3{background:linear-gradient(#e2b393,#b07a55);border-color:#9a6744;color:#fff}
+    :root[data-theme=black] .board-row.top-1>span{background:linear-gradient(#2c2819,#1d1b14)}
+    :root[data-theme=black] .wave:not(.next){background:linear-gradient(#000,#0b0b0c);border-color:#43464d;box-shadow:inset 0 1px 0 #ffffff26,0 2px 4px #000a}
+    :root[data-theme=black] .is-next .board-row:not(.board-head)>span.value{color:#c2c6cc}
+    :root[data-theme=black] .board-empty{color:#9a9fa7}
+    :root[data-theme=black] .screen-foot{border-top-color:#2e3035;color:#9a9fa7}
+    :root[data-theme=black] .screen-foot strong{color:#ff5a62}
+    :root[data-theme=black] .progress{background:#1a1b1e}
   </style>
   <script defer src="dist/core.js"></script><script defer src="dist/wod-core.js"></script><script defer src="dist/ecran.js"></script>
 </head>

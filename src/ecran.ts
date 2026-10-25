@@ -1,18 +1,22 @@
 // Écran public : classements en plein écran pour un projecteur ou une télé. Lecture seule.
 // ecran.html?source=hyrox ou ?source=wod. Les catégories défilent toutes seules ; les données se relisent
 // en continu, donc un score saisi dans la fenêtre principale apparaît ici quelques secondes plus tard.
+// Hyrox : entre les classements, une page « Prochains départs » montre les vagues qui ne sont pas encore parties.
+// Thème : celui de l’app (Paramètres → Apparence), ou ?theme=black / ?theme=blanc pour forcer.
 namespace Ecran {
   const HYROX_KEY = 'pace.hyrox.session.v1', WOD_KEY = 'soundcrossing-wod.v1';
   const params = new URLSearchParams(location.search);
   const source: 'hyrox' | 'wod' = params.get('source') === 'wod' ? 'wod' : 'hyrox';
-  const SLIDE_MS = Math.min(60, Math.max(4, Number(params.get('duree')) || 12)) * 1000;
-  const ROWS = 8, REFRESH_MS = 3000;
+  const SLIDE_MS = Math.min(60, Math.max(4, Number(params.get('duree')) || 10)) * 1000;
+  // Une page « Prochains départs » toutes les NEXT_EVERY catégories, pour que le public la revoie souvent.
+  const ROWS = 8, REFRESH_MS = 3000, NEXT_EVERY = 3;
   const $ = (id: string): HTMLElement => document.getElementById(id) as HTMLElement;
   const esc = (v: unknown): string => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
   const longDate = (date: string): string => date ? new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, c => c.toLocaleUpperCase('fr-FR')) : '';
 
-  interface Row { rank: number; names: string[]; cells: string[]; }
-  interface Slide { key: string; kicker: string; title: string; final: boolean; columns: string[]; rows: Row[]; empty: string; }
+  // lead = première case (pastille de rang ou heure de départ) ; top = rang pour colorer les 3 premières lignes.
+  interface Row { lead: string; top: number; names: string[]; cells: string[]; }
+  interface Slide { key: string; kicker: string; title: string; columns: string[]; rows: Row[]; empty: string; next?: true; }
   interface Board { title: string; date: string; slides: Slide[]; }
 
   function readRaw(key: string): string | null {
@@ -28,8 +32,43 @@ namespace Ecran {
     return `+${h ? `${h}:${pad(m)}` : m}:${pad(s % 60)}`;
   }
   const nameParts = (format: string, name1: string, name2: string): string[] => format === 'DUO' ? [name1, name2] : [name1];
+  const rankLead = (rank: number, final: boolean): string => `<b class="rank${final ? ` rank-${rank}` : ' provisional'}">${rank}</b>`;
 
-  function hyroxBoard(store: Pace.Store): Board | null {
+  function theme(): void {
+    let name = params.get('theme') ?? '';
+    if (name !== 'black' && name !== 'blanc') try { name = localStorage.getItem('soundcrossing-theme') ?? ''; } catch { /* Blanc par défaut. */ }
+    if (name === 'black') document.documentElement.dataset.theme = 'black'; else delete document.documentElement.dataset.theme;
+  }
+
+  // Vagues pas encore parties (heure de départ dans le futur), des plus proches aux suivantes.
+  // On montre des vagues entières, sur deux pages au plus ; celles déjà parties disparaissent toutes seules.
+  function nextDepartures(session: Pace.Session, entries: Pace.Entry[], now: number): Slide | null {
+    const waves = new Map<number, Pace.Entry[]>();
+    for (const e of entries) {
+      if (Pace.isResolved(e)) continue;
+      const race = session.races.find(r => r.id === e.raceId);
+      let at: number | null = null;
+      try { at = race ? Pace.departureAt(race, e) : null; } catch { /* Heure impossible : ignorée ici. */ }
+      if (at === null || at <= now) continue;
+      const minute = Math.floor(at / 60000) * 60000;
+      waves.set(minute, [...(waves.get(minute) ?? []), e]);
+    }
+    const times = [...waves.keys()].sort((a, b) => a - b);
+    if (!times.length) return null;
+    const rows: Row[] = [];
+    for (const time of times) {
+      const wave = (waves.get(time) as Pace.Entry[]).sort((a, b) => Pace.label(a).localeCompare(Pace.label(b), 'fr'));
+      if (rows.length && rows.length + wave.length > ROWS * 2) break;
+      const first = time === times[0];
+      rows.push(...wave.map(e => ({ lead: `<b class="wave${first ? ' next' : ''}">${Pace.timeOfDay(time).slice(0, 5)}</b>`, top: 0,
+        names: nameParts(e.format, e.name1, e.name2), cells: [esc(Pace.groupLabel(e.level, Pace.formatLabel(e)))] })));
+    }
+    const first = times[0] as number, wait = Math.ceil((first - now) / 60000);
+    return { key: 'next', next: true, kicker: 'PROCHAINS DÉPARTS', columns: ['DÉPART', 'PARTICIPANT', 'CATÉGORIE'], rows, empty: '',
+      title: `Prochaine vague à ${Pace.timeOfDay(first).slice(0, 5).replace(':', ' h ')} · ${wait <= 1 ? 'dans 1 min' : `dans ${wait} min`}` };
+  }
+
+  function hyroxBoard(store: Pace.Store, now: number): Board | null {
     const session = store.session;
     let selected = '';
     try { selected = localStorage.getItem(`${HYROX_KEY}.event`) ?? ''; } catch { /* Premier événement par défaut. */ }
@@ -44,14 +83,18 @@ namespace Ecran {
       const ranking = Pace.rankingFor(session, format, race.date, level), best = ranking[0]?.entry.durationMs ?? 0;
       const sample = inGroup[0] as Pace.Entry;
       return [{
-        key: `${level}:${format}`, kicker: final ? 'CLASSEMENT FINAL' : 'CLASSEMENT PROVISOIRE', final,
+        key: `${level}:${format}`, kicker: final ? 'CLASSEMENT FINAL' : 'CLASSEMENT PROVISOIRE',
         title: Pace.groupLabel(level, Pace.formatLabel(sample)), columns: ['RANG', sample.format === 'DUO' ? 'DUO' : 'PARTICIPANT', 'TEMPS', 'ÉCART'],
-        rows: ranking.map(({ entry, rank }) => ({ rank, names: nameParts(entry.format, entry.name1, entry.name2),
+        rows: ranking.map(({ entry, rank }) => ({ lead: rankLead(rank, final), top: rank, names: nameParts(entry.format, entry.name1, entry.name2),
           cells: [Pace.clock(entry.durationMs ?? 0), entry.durationMs === best ? '—' : gap((entry.durationMs ?? 0) - best)] })),
         empty: `${inGroup.length} inscrit(s) · premières arrivées à venir`,
       }];
     });
-    return { title: race.title, date: race.date, slides };
+    // Les prochains départs reviennent régulièrement entre les catégories : au début, puis toutes les NEXT_EVERY catégories.
+    const next = nextDepartures(session, entries, now), ranked = slides.filter(s => s.rows.length);
+    const shown = ranked.length ? ranked : next ? [] : slides;
+    const all = next ? shown.flatMap((s, i) => i % NEXT_EVERY === 0 ? [{ ...next, key: `next:${i}` }, s] : [s]) : shown;
+    return { title: race.title, date: race.date, slides: all.length ? all : next ? [next] : [] };
   }
 
   function wodBoard(store: Wod.Store): Board | null {
@@ -68,28 +111,32 @@ namespace Ecran {
       const scored = rows.some(r => Object.values(r.places).some(p => p !== null));
       const label = phase === 'final' ? 'FINALE' : final ? 'QUALIFICATIONS' : 'CLASSEMENT GÉNÉRAL';
       return [{
-        key: `${phase}:${cat}`, kicker: `${label} · ${done ? 'FINAL' : 'PROVISOIRE'}`, final: done, title: cat,
+        key: `${phase}:${cat}`, kicker: `${label} · ${done ? 'FINAL' : 'PROVISOIRE'}`, title: cat,
         columns: ['RANG', 'PARTICIPANT', ...wods.map(w => w.name.toUpperCase()), c.method === 'places' ? 'TOTAL' : 'POINTS'],
-        rows: scored ? rows.map(r => ({ rank: r.rank, names: nameParts(r.athlete.format, r.athlete.name1, r.athlete.name2),
+        rows: scored ? rows.map(r => ({ lead: rankLead(r.rank, done), top: r.rank, names: nameParts(r.athlete.format, r.athlete.name1, r.athlete.name2),
           cells: [...wods.map(w => { const p = r.places[w.id]; return p === null || p === undefined ? '–' : `${p}<sup>${p === 1 ? 'er' : 'e'}</sup>`; }), String(r.total)] })) : [],
         empty: `${rows.length} inscrit(s) · premiers scores à venir`,
       }];
     }));
-    return { title: c.title, date: c.date, slides };
+    // Catégories sans score : on ne les montre que si aucune n’a encore de score (le public n’attend pas devant une page vide).
+    const scoredSlides = slides.filter(s => s.rows.length);
+    return { title: c.title, date: c.date, slides: scoredSlides.length ? scoredSlides : slides };
   }
 
   let board: Board | null = null, lastRaw: string | null = null;
   async function refresh(): Promise<void> {
+    theme();
     const key = source === 'wod' ? WOD_KEY : HYROX_KEY;
     let raw = readRaw(key);
     if (raw === null) { const disk = await readDisk(source === 'wod' ? '/data/wod' : '/data'); raw = disk ? JSON.stringify(disk) : null; }
     let selected = '';
     try { selected = localStorage.getItem(`${key}.event`) ?? ''; } catch { /* Sans importance. */ }
-    const signature = `${selected}|${raw}`;
+    // La minute en cours fait partie de la signature : les vagues parties disparaissent sans attendre une saisie.
+    const now = Date.now(), signature = `${selected}|${Math.floor(now / 60000)}|${raw}`;
     if (signature === lastRaw) return;
     lastRaw = signature;
     try {
-      board = raw === null ? null : source === 'wod' ? wodBoard(Wod.validateStore(JSON.parse(raw))) : hyroxBoard(Pace.validateStore(JSON.parse(raw)));
+      board = raw === null ? null : source === 'wod' ? wodBoard(Wod.validateStore(JSON.parse(raw))) : hyroxBoard(Pace.validateStore(JSON.parse(raw)), now);
     } catch { return; } // Écriture en cours ou données illisibles : on garde l’affichage précédent.
     render(false);
   }
@@ -124,6 +171,7 @@ namespace Ecran {
     if (index < 0) { index = 0; page = 0; moved = true; }
     const slide = slides[index];
     $('screen').classList.toggle('is-waiting', !slide);
+    $('screen').classList.toggle('is-next', !!slide?.next);
     if (!slide) {
       slideKey = ''; $('kicker').textContent = source === 'wod' ? 'COMPÉTITION WOD' : 'HYROX';
       $('category').textContent = board ? 'Classements à venir' : 'Aucun événement';
@@ -135,10 +183,11 @@ namespace Ecran {
     $('category').textContent = slide.title;
     const visible = slide.rows.slice(page * ROWS, page * ROWS + ROWS);
     const head = `<div class="board-row board-head">${slide.columns.map(c => `<span>${esc(c)}</span>`).join('')}</div>`;
-    const body = visible.map(r => `<div class="board-row${r.rank <= 3 ? ` top top-${r.rank}` : ''}"><span><b class="rank${slide.final ? ` rank-${r.rank}` : ' provisional'}">${r.rank}</b></span><span class="names">${r.names.map(esc).join('<i>&amp;</i>')}</span>${r.cells.map(c => `<span class="value">${c}</span>`).join('')}</div>`).join('');
-    const grid = `grid-template-columns:clamp(70px,8vw,140px) minmax(0,1fr) repeat(${slide.columns.length - 2},minmax(90px,${slide.columns.length > 5 ? '11vw' : '17vw'}))`;
+    const body = visible.map(r => `<div class="board-row${r.top && r.top <= 3 ? ` top top-${r.top}` : ''}"><span>${r.lead}</span><span class="names">${r.names.map(esc).join('<i>&amp;</i>')}</span>${r.cells.map(c => `<span class="value">${c}</span>`).join('')}</div>`).join('');
+    const grid = `grid-template-columns:${slide.next ? 'clamp(110px,12vw,220px)' : 'clamp(70px,8vw,140px)'} minmax(0,1fr) repeat(${slide.columns.length - 2},minmax(90px,${slide.columns.length > 5 ? '11vw' : slide.next ? '24vw' : '17vw'}))`;
     $('board').innerHTML = visible.length ? `<div class="board-table" style="${grid}">${head}${body}</div>` : `<p class="board-empty">${esc(slide.empty)}</p>`;
-    $('position').textContent = `Catégorie ${index + 1}/${slides.length}${pages(slide) > 1 ? ` · page ${page + 1}/${pages(slide)}` : ''}`;
+    const categories = slides.filter(s => !s.next), place = categories.indexOf(slide) + 1;
+    $('position').textContent = `${slide.next ? 'Prochains départs' : `Catégorie ${place}/${categories.length}`}${pages(slide) > 1 ? ` · page ${page + 1}/${pages(slide)}` : ''}`;
     if (moved) { $('board').classList.remove('enter'); void $('board').offsetWidth; $('board').classList.add('enter'); schedule(); }
     else if (!timer || Date.now() - startedAt >= SLIDE_MS) schedule();
   }
@@ -152,6 +201,7 @@ namespace Ecran {
   function wake(): void { document.body.classList.remove('idle'); window.clearTimeout(idle); idle = window.setTimeout(() => document.body.classList.add('idle'), 3000); }
 
   document.addEventListener('DOMContentLoaded', () => {
+    theme();
     $('brand').textContent = source === 'wod' ? 'SOUND CROSSING / WOD' : 'SOUND CROSSING / HYROX';
     document.title = `Soundcrossing — Écran classement ${source === 'wod' ? 'WOD' : 'Hyrox'}`;
     document.addEventListener('keydown', e => {
