@@ -178,8 +178,19 @@ namespace PaceApp {
   // Tri choisi en cliquant sur les en-têtes, mémorisé par onglet (« Arrivées à compléter » suit Scores).
   const sortBy: Record<string, Tri.Etat | null> = {};
   const sortTable = (): string => view === 'live' ? 'scores' : view;
+  // Place en direct dans Scores, comme le WOD : rang dans la catégorie (niveau + format),
+  // pastille grise (provisoire) tant qu’une inscription de la catégorie attend son arrivée.
+  type Place = { rank: number; final: boolean };
+  function livePlaces(): Map<string, Place> {
+    const race = currentRace(), entries = raceEntries(), places = new Map<string, Place>();
+    for (const g of Pace.eventRankingGroups(race, entries)) {
+      const final = entries.filter(e => Pace.formatKey(e) === g.format && (e.level ?? '') === g.level).every(Pace.isResolved);
+      for (const r of Pace.rankingFor(state.session, g.format, race?.date ?? state.session.date, g.level)) places.set(r.entry.id, { rank: r.rank, final });
+    }
+    return places;
+  }
   function sortValue(e: Pace.Entry, key: string, ranks: Map<string, number>): Tri.Valeur {
-    if (key === 'rank') return ranks.get(e.id);
+    if (key === 'rank' || key === 'place') return ranks.get(e.id);
     if (key === 'name') return label(e);
     if (key === 'format') return Pace.groupLabel(e.level, Pace.formatLabel(e));
     if (key === 'start') return departureText(e) === '—' ? null : departureText(e);
@@ -197,7 +208,9 @@ namespace PaceApp {
     // Ordre habituel : heure de départ, puis nom.
     const list = raceEntries().filter(e => (view !== 'live' || !Pace.isResolved(e)) && (activeFormat === 'all' || Pace.formatKey(e) === activeFormat) && (!activeLevel || e.level === activeLevel) && (!search || normalize(label(e)).includes(search))).sort((a, b) =>
       (departureText(a) === '—' ? '99:99' : departureText(a)).localeCompare(departureText(b) === '—' ? '99:99' : departureText(b)) || label(a).localeCompare(label(b), 'fr'));
-    return Tri.appliquer(list, sort, (e, key) => sortValue(e, key, new Map()));
+    // Tri par place : catégorie par catégorie (les 1ers de chaque catégorie ne se mélangent pas).
+    const places = new Map([...livePlaces()].map(([id, p]) => [id, p.rank]));
+    return Tri.appliquer(list, sort, (e, key) => sortValue(e, key, places), sort?.key === 'place' ? e => `${e.level}:${Pace.formatKey(e)}` : undefined);
   }
   function actionButton(action: string, id: string, text: string, css = '', title = ''): string {
     return `<button class="row-action ${css}" data-action="${action}" data-id="${esc(id)}"${title ? ` aria-label="${esc(title)}" title="${esc(title)}"` : ''}>${text}</button>`;
@@ -222,7 +235,7 @@ namespace PaceApp {
     return `<td><div class="row-actions">${textButton('edit', e.id, 'Modifier', '', `Modifier l’inscription de ${label(e)}`)}${textButton('delete', e.id, 'Supprimer', 'danger', `Supprimer l’inscription de ${label(e)}`)}</div></td>`;
   }
   // Onglet Scores : l’heure d’arrivée se tape dans la case, le reste se fait avec les boutons de la ligne.
-  let unlockedId = '';
+  let unlockedId = '', places = new Map<string, Place>();
   function scoreCells(e: Pace.Entry): string {
     const out = e.status === 'abandoned' || e.status === 'withdrawn';
     // Même case d’heure que l’heure de départ de l’inscription, avec les secondes.
@@ -236,7 +249,8 @@ namespace PaceApp {
       out ? textButton('reinstate', e.id, 'Remettre en course') : textButton('withdraw', e.id, 'Forfait'),
       e.status === 'finished' ? textButton('clear', e.id, 'Effacer', 'danger', `Effacer le résultat de ${label(e)}`) : ''
     ].join('');
-    return `<td>${arrival}</td><td class="time-cell">${out ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${actions}</div></td>`;
+    const place = places.get(e.id);
+    return `<td>${arrival}</td><td class="time-cell">${out ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td class="place-cell">${place ? `<span class="result-rank ${place.final ? `rank-${place.rank}` : 'provisional'}">${place.rank}</span>` : '<span class="muted">—</span>'}</td><td><div class="row-actions">${actions}</div></td>`;
   }
   function render(): void {
     const race = currentRace(); selectedRaceId = race?.id ?? '';
@@ -269,7 +283,7 @@ namespace PaceApp {
     for (const [id, count] of [['nav-count', entries.length], ['nav-live', running], ['nav-results', finished], ['nav-scores', finished], ['stat-teams', entries.length], ['stat-running', running], ['stat-finished', finished]] as const) $(id).textContent = String(count);
     document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => { const active = b.dataset.view === (view === 'live' ? 'participants' : view); b.classList.toggle('active', active); b.setAttribute('aria-current', active ? 'page' : 'false'); });
     $('view-title').innerHTML = `${view === 'results' ? 'Classements du jour' : view === 'live' ? 'Arrivées à compléter' : view === 'scores' ? 'Saisie des scores' : 'Participants du jour'} <span id="list-count"></span>`;
-    $('view-description').textContent = view === 'scores' ? 'Tapez l’heure d’arrivée (heures, minutes, secondes) puis Entrée : le temps total se calcule et la case suivante est prête.' : view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
+    $('view-description').textContent = view === 'scores' ? 'Tapez l’heure d’arrivée (heures, minutes, secondes) puis Entrée : le temps total se calcule et la case suivante est prête. La place dans la catégorie se met à jour à chaque arrivée (grise tant qu’elle est provisoire).' : view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
     $('pending-filter').classList.toggle('active', view === 'live'); $('pending-filter').setAttribute('aria-pressed', String(view === 'live'));
     $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${option.key === 'all' ? '' : `chip-fmt-${option.key}`} ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
     $('format-chips').hidden = !race;
@@ -277,6 +291,7 @@ namespace PaceApp {
     // Le tableau connaît son onglet : largeurs et alignements des colonnes en dépendent (club.css).
     document.querySelector<HTMLElement>('.race-table')!.dataset.view = view;
     $('arrival-heading').hidden = $('total-heading').hidden = view === 'participants';
+    $('place-heading').hidden = view !== 'scores' && view !== 'live';
     $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
     $('show-podium-button').hidden = view === 'participants' || view === 'live';
     $('diploma-button').hidden = view !== 'results';
@@ -298,11 +313,12 @@ namespace PaceApp {
     $('empty-add').textContent = race ? 'Ajouter les participants' : 'Créer un événement';
     $('demo-button').hidden = state.session.races.length !== 0;
     const ranks = new Map(resultRanking().map(r => [r.entry.id, r.rank]));
+    places = view === 'scores' || view === 'live' ? livePlaces() : new Map();
     let previousFormat = '';
     $('entries-body').innerHTML = list.map(e => {
       const key = `${e.level}:${Pace.formatKey(e)}`, group = view === 'results' && (activeFormat === 'all' || !!race?.levels.length && !activeLevel) && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.groupLabel(e.level, Pace.formatLabel(e)))}</th></tr>` : ''; previousFormat = key;
       return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}${nameCell(e)}<td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td>${view === 'scores' || view === 'live' ? scoreCells(e) : view === 'participants' ? participantCells(e) : resultCells(e)}</tr>`;
-    }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : view === 'participants' ? 4 : 6}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
+    }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : view === 'participants' ? 4 : 7}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
     const focusedEntries = view === 'results' ? list : entries;
     if (!focusedEntries.some(e => e.id === focusId)) focusId = focusedEntries.find(e => !Pace.isResolved(e))?.id ?? focusedEntries.at(-1)?.id ?? '';
     if (photoId) renderPhoto();

@@ -254,6 +254,8 @@
 .race-table[data-view] #rank-heading,.wod-table:is([data-view=workouts],[data-view=ranking]) th:first-child{width:110px!important}
 .race-table[data-view] th.name-col{width:30%!important}
 .race-table[data-view] th:nth-last-child(2){width:auto}
+/* Colonne Place de l’onglet Scores (Hyrox), même largeur que la colonne Place du WOD. */
+.race-table[data-view] #place-heading{width:110px!important}
 .race-table[data-view] .score-time{margin:0;vertical-align:middle}
 .race-table[data-view] .score-time:disabled{text-align:center}
 .race-table[data-view] .score-name span{padding:0}.race-table[data-view] .score-name .duo-join{padding:0 5px}
@@ -492,7 +494,7 @@ html.chargement body>:not(.club-header){visibility:hidden;animation:sc-montrer 0
 :root[data-theme=black] .race-table :is(.duo-join,.score-name span,.muted){color:var(--bk-muted)}
 :root[data-theme=black] :is(.ranking-group th,.race-table tr.group-row td){background:#000!important;color:#fff!important;box-shadow:inset 0 -2px 0 #d8242d}
 :root[data-theme=black] :is(.sort-head:hover,.sort-head.active){color:#fff}
-:root[data-theme=black] :is(.result-rank,.result-rank.provisional){background:#2a2c31;color:var(--bk-text);box-shadow:inset 0 0 0 1px #3d4046}
+:root[data-theme=black] .result-rank:not(.rank-1,.rank-2,.rank-3){background:#2a2c31;color:var(--bk-text);box-shadow:inset 0 0 0 1px #3d4046}
 :root[data-theme=black] .table-footer{background:#141518;color:var(--bk-muted);border-top:1px solid #26282c}
 :root[data-theme=black] .empty-icon{background:#2a1517;border-color:#6a2a2e;color:#ff6b72}
 :root[data-theme=black] .table-scroll-hint{color:var(--bk-muted)}
