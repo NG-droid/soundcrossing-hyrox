@@ -51,6 +51,7 @@ var Ecran;
             document.documentElement.dataset.theme = 'black';
         else
             delete document.documentElement.dataset.theme;
+        document.querySelector('link[rel="icon"]')?.setAttribute('href', name === 'black' ? 'assets/favicon-black.png' : 'assets/favicon.png');
     }
     // Vagues pas encore parties (heure de départ dans le futur), des plus proches aux suivantes.
     // On montre des vagues entières, sur deux pages au plus ; celles déjà parties disparaissent toutes seules.

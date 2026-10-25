@@ -161,6 +161,7 @@ namespace Theme {
   export function appliquer(nom: Nom): void {
     const root = document.documentElement;
     if (nom === 'black') root.dataset.theme = 'black'; else delete root.dataset.theme;
+    document.querySelector('link[rel="icon"]')?.setAttribute('href', nom === 'black' ? 'assets/favicon-black.png' : 'assets/favicon.png');
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', nom === 'black' ? '#141518' : '#eceef0');
     document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === nom)));
   }
