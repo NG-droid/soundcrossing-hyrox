@@ -290,6 +290,12 @@ def update():
     try:
         if (ROOT / ".git").exists():
             subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=ROOT, timeout=30, check=False)
+            # Mac : git pull vient de remplacer server.py, mais ce processus tourne encore avec l’ancien code en mémoire
+            # (ancienne liste de fichiers : un fichier ajouté par la mise à jour serait introuvable). On repart sur le nouveau.
+            if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() != CODE:
+                print("Mise à jour installée, redémarrage…", flush=True)
+                os.environ["SOUNDCROSSING_NO_UPDATE"] = "1"
+                os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
             return
         if not VERSION_FILE.exists():
             return
