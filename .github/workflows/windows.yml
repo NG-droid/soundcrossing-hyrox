@@ -9,9 +9,15 @@ on:
 permissions:
   contents: write
 
+# Deux fusions rapprochées : le build le plus récent remplace l’autre, une ancienne version n’est jamais publiée après la nouvelle.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   paquet:
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # un miroir Ubuntu lent ne bloque plus le build pendant des heures
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,14 +27,16 @@ jobs:
           node-version: 22
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"  # même version que le Python inclus dans le ZIP
       - name: Compilateur Windows pour Soundcrossing.exe
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+        run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
       - run: npm ci
       - run: npm test
       - name: Tests du serveur (port et données temporaires)
         run: python -m unittest tests/test_server_data.py
       - run: npm run pack-windows
+      - name: Contrôle du ZIP (fichiers livrés, servis et mis à jour, lanceur Windows)
+        run: python -m unittest tests/test_windows_package.py
       - uses: actions/upload-artifact@v4
         with:
           name: Soundcrossing-Windows-x64
@@ -38,6 +46,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Une fusion plus récente est déjà sur main : c’est son build qui publie.
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then echo "Version dépassée, non publiée."; exit 0; fi
           gh release delete windows --yes --cleanup-tag || true
           gh release create windows livraison/Soundcrossing-Windows-x64.zip livraison/VERSION.txt \
             --title "Soundcrossing pour Windows" \

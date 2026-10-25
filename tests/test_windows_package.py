@@ -7,6 +7,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import struct
+import sys
 import tempfile
 from threading import Thread
 import unittest
@@ -17,6 +18,8 @@ from zipfile import ZipFile
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / "livraison" / "Soundcrossing-Windows-x64.zip"
 PREFIX = "Soundcrossing/"
+sys.path.insert(0, str(ROOT / "scripts"))
+from package_files import APP_FILES  # noqa: E402
 
 
 @contextmanager
@@ -96,12 +99,17 @@ class WindowsDistributionTests(unittest.TestCase):
             self.assertIn(name, module.UPDATABLE)
         for name in module.UPDATABLE:
             self.assertIn(f"{PREFIX}{name}", names)
+        # Un fichier livré mais absent de UPDATABLE ne serait jamais installé par la mise à jour automatique.
+        for name in APP_FILES:
+            self.assertIn(name, module.UPDATABLE)
 
     def test_extracted_application_serves_assets_with_spaces_and_unicode_paths(self):
         with extracted_server() as (base, module):
             with urlopen(f"{base}/health", timeout=5) as response:
                 self.assertEqual(json.load(response)["identity"], module.IDENTITY)
-            for path in ["/", "/styles.css", "/club.css", "/assets/soundcrossing-logo.jpg", "/assets/soundcrossing-logo.png", "/dist/models.js", "/dist/core.js", "/dist/app.js", "/vendor/xlsx.full.min.js"]:
+            # Tous les fichiers de la page livrés dans le ZIP : un fichier ajouté mais oublié dans la liste du serveur donne une page cassée.
+            pages = [f"/{name}" for name in APP_FILES if name != "server.py" and not name.endswith((".md", ".txt"))]
+            for path in ["/", *pages]:
                 with urlopen(f"{base}{path}", timeout=5) as response:
                     self.assertEqual(response.status, 200)
                     self.assertTrue(response.read(), path)

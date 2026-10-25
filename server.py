@@ -212,6 +212,7 @@ UPDATABLE = (
 LAUNCHER = ROOT / "Soundcrossing.exe"
 # Lancé par Soundcrossing.exe : pas de fenêtre, les messages vont dans soundcrossing-journal.txt.
 WITHOUT_WINDOW = "--lanceur" in sys.argv
+WINDOWS = os.name == "nt"
 
 
 REQUIRED = ("index.html", "server.py", "dist/models.js", "dist/core.js", "dist/app.js", "wod.html", "dist/wod-core.js", "dist/wod-app.js")
@@ -279,6 +280,27 @@ def install(files, version):
             pending.unlink(missing_ok=True)
 
 
+def restart_if_changed():
+    """La mise à jour vient de remplacer server.py, mais ce processus tourne encore avec l’ancien code en mémoire
+    (ancienne liste de fichiers : un fichier ajouté par la mise à jour serait introuvable). On repart sur le nouveau."""
+    if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() == CODE:
+        return
+    print("Mise à jour installée, redémarrage…", flush=True)
+    os.environ["SOUNDCROSSING_NO_UPDATE"] = "1"
+    flags = (["-I"] if sys.flags.isolated else []) + (["-X", "utf8"] if sys.flags.utf8_mode else [])
+    command = [sys.executable, *flags, str(Path(__file__).resolve()), *sys.argv[1:]]
+    if WINDOWS:
+        # execv lancerait un autre processus et terminerait celui-ci : Soundcrossing.exe croirait le serveur arrêté.
+        # Ce processus reste donc en vie et attend le nouveau serveur ; mêmes sorties (journal ou fenêtre), sans nouvelle fenêtre noire.
+        try:
+            code = subprocess.call(command, stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=sys.stderr,
+                                   creationflags=subprocess.CREATE_NO_WINDOW if WITHOUT_WINDOW else 0)
+        except KeyboardInterrupt:  # Ctrl+C dans la fenêtre : le nouveau serveur s’arrête aussi
+            code = 0
+        sys.exit(code)
+    os.execv(sys.executable, command)
+
+
 def update():
     """Récupère la dernière version publiée. Sans Internet, l’application démarre telle quelle."""
     if "--no-update" in sys.argv or os.environ.get("SOUNDCROSSING_NO_UPDATE"):
@@ -292,10 +314,7 @@ def update():
             subprocess.run(["git", "pull", "--ff-only", "--quiet"], cwd=ROOT, timeout=30, check=False)
             # Mac : git pull vient de remplacer server.py, mais ce processus tourne encore avec l’ancien code en mémoire
             # (ancienne liste de fichiers : un fichier ajouté par la mise à jour serait introuvable). On repart sur le nouveau.
-            if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() != CODE:
-                print("Mise à jour installée, redémarrage…", flush=True)
-                os.environ["SOUNDCROSSING_NO_UPDATE"] = "1"
-                os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
+            restart_if_changed()
             return
         if not VERSION_FILE.exists():
             return
@@ -318,6 +337,8 @@ def update():
             files = {name: archive.read(f"Soundcrossing/{name}") for name in UPDATABLE if f"Soundcrossing/{name}" in archive.namelist()}
         install(files, remote)
         print("Soundcrossing est à jour.", flush=True)
+        # Windows : même chose qu’après git pull, sinon un fichier ajouté par cette version reste introuvable jusqu’au lancement suivant.
+        restart_if_changed()
     except Exception:  # Une mise à jour ratée ne doit jamais empêcher la course.
         print("Mise à jour impossible pour le moment ; la version actuelle démarre.", flush=True)
 

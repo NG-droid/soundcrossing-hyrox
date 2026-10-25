@@ -222,6 +222,34 @@ class UpdateInstallTest(unittest.TestCase):
         self.assertFalse((root / "Soundcrossing.exe.ancien").exists())
         self.assertEqual((root / "VERSION").read_text(), "v3")
 
+    def test_unchanged_server_is_not_restarted(self):
+        with mock.patch.object(self.module.os, "execv") as execv, mock.patch.object(self.module.subprocess, "call") as call:
+            self.module.restart_if_changed()
+        execv.assert_not_called()
+        call.assert_not_called()
+
+    def test_mac_restarts_on_the_new_server_after_an_update(self):
+        self.module.CODE = "ancien"
+        with mock.patch.object(self.module, "WINDOWS", False), mock.patch.object(self.module.os, "execv") as execv, \
+                mock.patch.dict(os.environ):
+            self.module.restart_if_changed()
+            self.assertEqual(os.environ["SOUNDCROSSING_NO_UPDATE"], "1")
+        self.assertIn(str(ROOT / "server.py"), execv.call_args.args[1])
+
+    def test_windows_waits_for_the_new_server_after_an_update(self):
+        """Soundcrossing.exe surveille ce processus : il doit rester en vie tant que le nouveau serveur tourne."""
+        self.module.CODE = "ancien"
+        with mock.patch.object(self.module, "WINDOWS", True), mock.patch.object(self.module.os, "execv") as execv, \
+                mock.patch.object(self.module.subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True), \
+                mock.patch.object(self.module, "WITHOUT_WINDOW", True), \
+                mock.patch.object(self.module.subprocess, "call", return_value=3) as call, mock.patch.dict(os.environ), \
+                self.assertRaises(SystemExit) as stop:
+            self.module.restart_if_changed()
+        execv.assert_not_called()
+        self.assertEqual(stop.exception.code, 3)
+        self.assertIn(str(ROOT / "server.py"), call.call_args.args[0])
+        self.assertEqual(call.call_args.kwargs["creationflags"], 0x08000000)
+
 
 if __name__ == "__main__":
     unittest.main()
