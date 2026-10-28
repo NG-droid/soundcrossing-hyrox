@@ -46,12 +46,12 @@ var Ecran;
             try {
                 name = localStorage.getItem('soundcrossing-theme') ?? '';
             }
-            catch { /* Blanc par défaut. */ }
-        if (name === 'black')
+            catch { /* Sombre par défaut. */ }
+        if (name !== 'blanc')
             document.documentElement.dataset.theme = 'black';
         else
             delete document.documentElement.dataset.theme;
-        document.querySelector('link[rel="icon"]')?.setAttribute('href', name === 'black' ? 'assets/favicon-black.png' : 'assets/favicon.png');
+        document.querySelector('link[rel="icon"]')?.setAttribute('href', name !== 'blanc' ? 'assets/favicon-black.png' : 'assets/favicon.png');
     }
     // Vagues pas encore parties (heure de départ dans le futur), des plus proches aux suivantes.
     // On montre des vagues entières, sur deux pages au plus ; celles déjà parties disparaissent toutes seules.

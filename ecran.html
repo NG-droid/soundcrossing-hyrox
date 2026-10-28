@@ -5,7 +5,7 @@
   <meta name="color-scheme" content="light dark"><meta name="theme-color" content="#182422"><meta name="description" content="Classements en plein écran pour le public : les catégories défilent toutes seules.">
   <title>Soundcrossing — Écran classement</title>
   <link rel="icon" type="image/png" href="assets/favicon.png">
-  <script>/* Thème de l’app (Paramètres → Apparence) ou ?theme=black, appliqué avant l’affichage (pas de flash blanc). */try{var t=new URLSearchParams(location.search).get('theme');if(t!=='black'&&t!=='blanc')t=localStorage.getItem('soundcrossing-theme');if(t==='black'){document.documentElement.dataset.theme='black';document.querySelector('link[rel=icon]').href='assets/favicon-black.png'}}catch(e){}</script>
+  <script>/* Thème de l’app (Paramètres → Apparence) ou ?theme=black, Sombre par défaut, appliqué avant l’affichage (pas de flash blanc). */var t=new URLSearchParams(location.search).get('theme');try{if(t!=='black'&&t!=='blanc')t=localStorage.getItem('soundcrossing-theme')}catch(e){}if(t!=='blanc'){document.documentElement.dataset.theme='black';document.querySelector('link[rel=icon]').href='assets/favicon-black.png'}</script>
   <style>
     *{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}
     body{background:#d4d5d8;color:#171717;font-family:Arial,Helvetica,sans-serif}

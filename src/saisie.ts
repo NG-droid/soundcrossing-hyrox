@@ -150,13 +150,13 @@ namespace Temoin {
   }
 }
 
-// Thème de l’application (Paramètres → Apparence), partagé par l’Hyrox et le WOD : « blanc » ou « black ».
+// Thème de l’application (Paramètres → Apparence), partagé par l’Hyrox et le WOD : « blanc » (Clair) ou « black » (Sombre, par défaut).
 // Le choix est gardé dans ce navigateur ; un petit script dans <head> l’applique avant l’affichage.
 namespace Theme {
   export type Nom = 'blanc' | 'black';
   const CLE = 'soundcrossing-theme';
   export function lire(): Nom {
-    try { return localStorage.getItem(CLE) === 'black' ? 'black' : 'blanc'; } catch { return 'blanc'; }
+    try { return localStorage.getItem(CLE) === 'blanc' ? 'blanc' : 'black'; } catch { return 'black'; }
   }
   export function appliquer(nom: Nom): void {
     const root = document.documentElement;
@@ -166,7 +166,7 @@ namespace Theme {
     document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === nom)));
   }
   export function choisir(nom: Nom): void {
-    try { if (nom === 'black') localStorage.setItem(CLE, 'black'); else localStorage.removeItem(CLE); } catch { /* stockage bloqué : le thème vaut pour cette page seulement */ }
+    try { localStorage.setItem(CLE, nom); } catch { /* stockage bloqué : le thème vaut pour cette page seulement */ }
     appliquer(nom);
   }
   // Branché seulement dans une vraie page (pas dans les tests, où document est simulé).
