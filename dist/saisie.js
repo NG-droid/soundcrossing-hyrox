@@ -223,17 +223,17 @@ var Temoin;
     }
     Temoin.surveiller = surveiller;
 })(Temoin || (Temoin = {}));
-// Thème de l’application (Paramètres → Apparence), partagé par l’Hyrox et le WOD : « blanc » ou « black ».
+// Thème de l’application (Paramètres → Apparence), partagé par l’Hyrox et le WOD : « blanc » (Clair) ou « black » (Sombre, par défaut).
 // Le choix est gardé dans ce navigateur ; un petit script dans <head> l’applique avant l’affichage.
 var Theme;
 (function (Theme) {
     const CLE = 'soundcrossing-theme';
     function lire() {
         try {
-            return localStorage.getItem(CLE) === 'black' ? 'black' : 'blanc';
+            return localStorage.getItem(CLE) === 'blanc' ? 'blanc' : 'black';
         }
         catch {
-            return 'blanc';
+            return 'black';
         }
     }
     Theme.lire = lire;
@@ -250,10 +250,7 @@ var Theme;
     Theme.appliquer = appliquer;
     function choisir(nom) {
         try {
-            if (nom === 'black')
-                localStorage.setItem(CLE, 'black');
-            else
-                localStorage.removeItem(CLE);
+            localStorage.setItem(CLE, nom);
         }
         catch { /* stockage bloqué : le thème vaut pour cette page seulement */ }
         appliquer(nom);

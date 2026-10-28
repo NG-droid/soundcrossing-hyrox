@@ -36,9 +36,9 @@ namespace Ecran {
 
   function theme(): void {
     let name = params.get('theme') ?? '';
-    if (name !== 'black' && name !== 'blanc') try { name = localStorage.getItem('soundcrossing-theme') ?? ''; } catch { /* Blanc par défaut. */ }
-    if (name === 'black') document.documentElement.dataset.theme = 'black'; else delete document.documentElement.dataset.theme;
-    document.querySelector('link[rel="icon"]')?.setAttribute('href', name === 'black' ? 'assets/favicon-black.png' : 'assets/favicon.png');
+    if (name !== 'black' && name !== 'blanc') try { name = localStorage.getItem('soundcrossing-theme') ?? ''; } catch { /* Sombre par défaut. */ }
+    if (name !== 'blanc') document.documentElement.dataset.theme = 'black'; else delete document.documentElement.dataset.theme;
+    document.querySelector('link[rel="icon"]')?.setAttribute('href', name !== 'blanc' ? 'assets/favicon-black.png' : 'assets/favicon.png');
   }
 
   // Vagues pas encore parties (heure de départ dans le futur), des plus proches aux suivantes.
