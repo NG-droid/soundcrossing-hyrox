@@ -418,7 +418,7 @@ var PaceApp;
         $('place-heading').hidden = $('penalty-heading').hidden = view !== 'scores' && view !== 'live';
         $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
         $('show-podium-button').hidden = view === 'participants' || view === 'live';
-        $('diploma-button').hidden = view !== 'results';
+        $('diploma-button').hidden = $('insta-button').hidden = view !== 'results';
         $('rank-heading').dataset.label = finalResults ? 'RANG' : 'RANG PROVISOIRE';
         Tri.marquer($('entries-head'), sortBy[sortTable()] ?? null);
         const list = filtered();
@@ -906,6 +906,23 @@ var PaceApp;
             go();
         else
             ask('Classement provisoire', `Des inscriptions restent à compléter : les places imprimées peuvent encore changer. Imprimer quand même ${list.length} diplôme(s) ?`, go, 'Imprimer');
+    }
+    // Images Instagram : une par catégorie affichée (filtres), avec les participants classés qui correspondent à la recherche.
+    function openInstagram() {
+        const race = currentRace();
+        if (!race)
+            return;
+        const shown = new Set(filtered().map(e => e.id)), final = Pace.eventResultsFinal(state.session, race);
+        const cards = Pace.eventRankingGroups(race, raceEntries()).filter(g => (!activeLevel || g.level === activeLevel) && (activeFormat === 'all' || g.format === activeFormat)).map(g => ({
+            event: race.title, date: race.date, kicker: final ? 'Classement final' : 'Classement provisoire', group: Pace.groupLabel(g.level, formatName(g.format)), resultLabel: 'Temps',
+            rows: Pace.rankingFor(state.session, g.format, race.date, g.level).filter(r => shown.has(r.entry.id) && r.entry.durationMs !== null)
+                .map(r => ({ rank: r.rank, name: r.entry.format === 'DUO' ? `${r.entry.name1} & ${r.entry.name2}` : r.entry.name1, result: clock(Pace.finalMs(r.entry)) })),
+        })).filter(c => c.rows.length);
+        if (!cards.length) {
+            toast('Aucun participant classé avec ces filtres.');
+            return;
+        }
+        Insta.open(cards);
     }
     function formatName(format) { return formatOptions.find(option => option.key === format).label; }
     function openPodium(raceId, format, level = '') {
@@ -1439,6 +1456,7 @@ var PaceApp;
     $('csv-final-button').addEventListener('click', exportFinalCSV);
     $('show-podium-button').addEventListener('click', openPodiumChooser);
     $('diploma-button').addEventListener('click', printDiplomas);
+    $('insta-button').addEventListener('click', openInstagram);
     $('settings-button').addEventListener('click', () => { Sauvegarde.precharger('wod'); $('settings-dialog').showModal(); });
     $('backup-button').addEventListener('click', () => exportBackup());
     $('restore-button').addEventListener('click', () => $('restore-file').click());
