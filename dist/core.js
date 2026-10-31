@@ -90,6 +90,20 @@ var Pace;
         return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(n => String(n).padStart(2, '0')).join(':');
     }
     Pace.clock = clock;
+    // Temps final = temps de course + pénalité : c’est lui qui classe et qui s’affiche partout.
+    function finalMs(entry) {
+        return entry.durationMs === null ? null : entry.durationMs + (entry.penaltyMs ?? 0);
+    }
+    Pace.finalMs = finalMs;
+    // Pénalité affichée « +00:30 » (minutes : secondes), '' sans pénalité.
+    Pace.MAX_PENALTY_MS = 99 * 60000 + 59000;
+    function penaltyText(ms) {
+        if (!ms)
+            return '';
+        const s = Math.round(ms / 1000);
+        return `+${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    }
+    Pace.penaltyText = penaltyText;
     function words(ms) {
         const [h, m, s] = clock(ms).split(':');
         return `${Number(h)} h ${m} min ${s} s`;
@@ -200,10 +214,10 @@ var Pace;
     }
     Pace.assertEditUnchanged = assertEditUnchanged;
     function ranking(entries) {
-        const sorted = entries.filter(e => e.status === 'finished' && e.durationMs !== null).sort((a, b) => a.durationMs - b.durationMs || label(a).localeCompare(label(b), 'fr'));
+        const sorted = entries.filter(e => e.status === 'finished' && e.durationMs !== null).sort((a, b) => finalMs(a) - finalMs(b) || label(a).localeCompare(label(b), 'fr'));
         let rank = 0;
         return sorted.map((entry, i) => {
-            if (i === 0 || entry.durationMs !== sorted[i - 1].durationMs)
+            if (i === 0 || finalMs(entry) !== finalMs(sorted[i - 1]))
                 rank = i + 1;
             return { entry, rank };
         });
@@ -240,7 +254,7 @@ var Pace;
     }
     Pace.podiumFor = podiumFor;
     function setOutcome(entry, status) {
-        return validateEntry({ ...entry, status, arrivedAt: null, durationMs: null, startedAt: status === 'withdrawn' ? null : entry.startedAt });
+        return validateEntry({ ...entry, status, arrivedAt: null, durationMs: null, penaltyMs: status === 'waiting' ? entry.penaltyMs : 0, startedAt: status === 'withdrawn' ? null : entry.startedAt });
     }
     Pace.setOutcome = setOutcome;
     function calculateArrival(race, entry, value, nextDay) {
@@ -308,13 +322,13 @@ var Pace;
             throw Error('Complétez chaque résultat ou indiquez Forfait avant d’exporter le CSV final.');
         const races = new Map(session.races.filter(r => r.date === race.date).map(r => [r.id, r]));
         const withLevels = (race.levels?.length ?? 0) > 0;
-        const rows = [['Rang', ...(withLevels ? ['Niveau'] : []), 'Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Heure d’arrivée', 'Temps total', 'Statut', 'Événement', 'Date', 'Date d’arrivée']];
+        const rows = [['Rang', ...(withLevels ? ['Niveau'] : []), 'Format', 'Participant 1', 'Participant 2', 'Heure de départ', 'Heure d’arrivée', 'Temps de course', 'Pénalité', 'Temps total', 'Statut', 'Événement', 'Date', 'Date d’arrivée']];
         for (const { level, format } of eventRankingGroups(race, session.entries)) {
             const ranked = rankingFor(session, format, race.date, level), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
             const entries = session.entries.filter(e => races.has(e.raceId) && formatKey(e) === format && (e.level ?? '') === level);
             entries.sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) || label(a).localeCompare(label(b), 'fr'));
             for (const e of entries)
-                rows.push([ranks.get(e.id) ?? '', ...(withLevels ? [level] : []), formatLabel(e), e.name1, e.name2, e.startedAt === null ? e.scheduled : timeOfDay(e.startedAt), e.arrivedAt === null ? '' : timeOfDay(e.arrivedAt), e.durationMs === null ? '' : clock(e.durationMs), statusLabel(e), races.get(e.raceId).title, race.date, e.arrivedAt === null ? '' : localDate(new Date(e.arrivedAt))]);
+                rows.push([ranks.get(e.id) ?? '', ...(withLevels ? [level] : []), formatLabel(e), e.name1, e.name2, e.startedAt === null ? e.scheduled : timeOfDay(e.startedAt), e.arrivedAt === null ? '' : timeOfDay(e.arrivedAt), e.durationMs === null ? '' : clock(e.durationMs), e.penaltyMs ? clock(e.penaltyMs) : '', e.durationMs === null ? '' : clock(finalMs(e)), statusLabel(e), races.get(e.raceId).title, race.date, e.arrivedAt === null ? '' : localDate(new Date(e.arrivedAt))]);
         }
         return encodeCSV(rows);
     }
@@ -375,6 +389,11 @@ var Pace;
             throw Error('Inscription en attente incohérente.');
         if (v.status === 'finished' && v.durationMs === null)
             throw Error('Résultat sans temps final.');
+        const penaltyMs = v.penaltyMs ?? 0;
+        if (typeof penaltyMs !== 'number' || !Number.isInteger(penaltyMs) || penaltyMs < 0 || penaltyMs > Pace.MAX_PENALTY_MS)
+            throw Error('Pénalité invalide.');
+        if ((v.status === 'abandoned' || v.status === 'withdrawn') && penaltyMs)
+            throw Error('Un forfait ne peut pas avoir de pénalité.');
         const legacyId = `legacy-${v.format}-${v.category || 'solo'}`;
         if (v.raceId !== undefined && (typeof v.raceId !== 'string' || !v.raceId || v.raceId.length > 160))
             throw Error('Course du participant invalide.');
@@ -391,7 +410,7 @@ var Pace;
             throw Error('Un forfait ne peut pas avoir de départ enregistré.');
         if (arrivedAt !== null && (typeof arrivedAt !== 'number' || !Number.isFinite(arrivedAt) || arrivedAt <= 0 || v.status !== 'finished' || typeof v.startedAt !== 'number' || arrivedAt - v.startedAt !== v.durationMs))
             throw Error('Les horaires et le résultat ne correspondent pas.');
-        return { id: v.id, bib: v.bib.trim(), raceId: v.raceId ?? legacyId, name1: v.name1.trim(), name2: v.name2.trim(), gender1: gender1, gender2: gender2, format: v.format, category: v.category, level: level, scheduled, startedAt: v.startedAt, arrivedAt: arrivedAt, durationMs: v.durationMs, status: v.status, resultMode };
+        return { id: v.id, bib: v.bib.trim(), raceId: v.raceId ?? legacyId, name1: v.name1.trim(), name2: v.name2.trim(), gender1: gender1, gender2: gender2, format: v.format, category: v.category, level: level, scheduled, startedAt: v.startedAt, arrivedAt: arrivedAt, durationMs: v.durationMs, status: v.status, resultMode, penaltyMs };
     }
     Pace.validateEntry = validateEntry;
     function validateSession(value, migrateLegacyFormats = false) {

@@ -27,6 +27,8 @@ namespace Pace {
     format: Format; category: Category; level: string; scheduled: string;
     startedAt: number | null; arrivedAt: number | null; durationMs: number | null; status: Status;
     resultMode: ResultMode;
+    // Pénalité en millisecondes (0 = aucune), ajoutée au temps de course pour le temps final et le classement.
+    penaltyMs: number;
   }
   export interface ArrivalResult { startedAt: number; arrivedAt: number; durationMs: number; }
   export interface ArrivalCapture extends ArrivalResult { arrivalTime: string; nextDay: boolean; }

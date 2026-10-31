@@ -300,7 +300,9 @@ var PaceApp;
         if (key === 'arrival')
             return e.arrivedAt;
         if (key === 'time')
-            return e.status === 'finished' ? e.durationMs : null;
+            return e.status === 'finished' ? Pace.finalMs(e) : null;
+        if (key === 'penalty')
+            return e.penaltyMs || null;
         return null;
     }
     function filtered() {
@@ -331,8 +333,12 @@ var PaceApp;
     function arrivalText(e) {
         return e.arrivedAt === null ? '—' : `${Pace.timeOfDay(e.arrivedAt)}${e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? '<small class="next-day-tag">+1 jour</small>' : ''}`;
     }
+    // Temps total = temps de course + pénalité ; la pénalité est rappelée en petit sous le temps.
+    function finalTimeText(e) {
+        return `${clock(Pace.finalMs(e))}${e.penaltyMs ? `<small class="penalty-tag">dont pénalité ${Pace.penaltyText(e.penaltyMs)}</small>` : ''}`;
+    }
     function resultCells(e) {
-        return `<td class="recorded-time">${arrivalText(e)}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td><div class="row-actions">${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}</div></td>`;
+        return `<td class="recorded-time">${arrivalText(e)}</td><td class="time-cell">${e.status === 'abandoned' || e.status === 'withdrawn' ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : finalTimeText(e)}</td><td><div class="row-actions">${e.status === 'finished' ? actionButton('photo', e.id, 'Photo finish', 'photo-action') : ''}</div></td>`;
     }
     // Onglet Participants : on gère l’inscription (modifier, supprimer) ; les résultats se saisissent dans Scores.
     function participantCells(e) {
@@ -353,8 +359,10 @@ var PaceApp;
             out ? textButton('reinstate', e.id, 'Remettre en course') : textButton('withdraw', e.id, 'Forfait'),
             e.status === 'finished' ? textButton('clear', e.id, 'Effacer', 'danger', `Effacer le résultat de ${label(e)}`) : ''
         ].join('');
+        // Pénalité (minutes : secondes) à côté de l’arrivée : elle s’ajoute au temps total. Toujours modifiable, sauf forfait.
+        const penalty = `<div class="arrival-entry">${Saisie.box(`data-penalty="${esc(e.id)}"${out ? ' disabled' : ''}`, e.penaltyMs ? Saisie.fromMs(e.penaltyMs, true) : '', `Pénalité de ${esc(label(e))}`, 2)}</div>`;
         const place = places.get(e.id);
-        return `<td>${arrival}</td><td class="time-cell">${out ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(e.durationMs)}</td><td class="place-cell">${place ? `<span class="result-rank ${place.final ? `rank-${place.rank}` : 'provisional'}">${place.rank}</span>` : '<span class="muted">—</span>'}</td><td><div class="row-actions">${actions}</div></td>`;
+        return `<td>${arrival}</td><td>${penalty}</td><td class="time-cell">${out ? `<span class="outcome-badge">${Pace.statusLabel(e)}</span>` : e.durationMs === null ? '—' : clock(Pace.finalMs(e))}</td><td class="place-cell">${place ? `<span class="result-rank ${place.final ? `rank-${place.rank}` : 'provisional'}">${place.rank}</span>` : '<span class="muted">—</span>'}</td><td><div class="row-actions">${actions}</div></td>`;
     }
     function render() {
         const race = currentRace();
@@ -398,7 +406,7 @@ var PaceApp;
             $(id).textContent = String(count);
         document.querySelectorAll('[data-view]').forEach(b => { const active = b.dataset.view === (view === 'live' ? 'participants' : view); b.classList.toggle('active', active); b.setAttribute('aria-current', active ? 'page' : 'false'); });
         $('view-title').innerHTML = `${view === 'results' ? 'Classements du jour' : view === 'live' ? 'Arrivées à compléter' : view === 'scores' ? 'Saisie des scores' : 'Participants du jour'} <span id="list-count"></span>`;
-        $('view-description').textContent = view === 'scores' ? 'Tapez l’heure d’arrivée (heures, minutes, secondes) puis Entrée : le temps total se calcule et la case suivante est prête. La place dans la catégorie se met à jour à chaque arrivée (grise tant qu’elle est provisoire).' : view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
+        $('view-description').textContent = view === 'scores' ? 'Tapez l’heure d’arrivée (heures, minutes, secondes) puis Entrée : le temps total se calcule et la case suivante est prête. Une pénalité (minutes : secondes) s’ajoute au temps total et au classement. La place dans la catégorie se met à jour à chaque arrivée (grise tant qu’elle est provisoire).' : view === 'results' ? `${finalResults ? 'Classements définitifs' : 'Classements provisoires : des inscriptions restent à compléter'}. Forfaits non classés. Les ex æquo partagent leur rang.` : race?.format === 'DUO' ? 'Les duos de la journée, classés par heure de départ.' : race?.format === 'SOLO' ? 'Les solos de la journée, classés par heure de départ.' : 'Tous les formats réunis, classés par heure de départ.';
         $('pending-filter').classList.toggle('active', view === 'live');
         $('pending-filter').setAttribute('aria-pressed', String(view === 'live'));
         $('format-chips').innerHTML = [{ key: 'all', label: 'Tout le monde' }, ...formatOptions.filter(option => visibleFormats.includes(option.key))].map(option => `<button class="format-chip ${option.key === 'all' ? '' : `chip-fmt-${option.key}`} ${activeFormat === option.key ? 'active' : ''}" data-filter="${option.key}" aria-pressed="${activeFormat === option.key}">${option.label}<small>${levelEntries.filter(e => option.key === 'all' || Pace.formatKey(e) === option.key).length}</small></button>`).join('');
@@ -407,7 +415,7 @@ var PaceApp;
         // Le tableau connaît son onglet : largeurs et alignements des colonnes en dépendent (club.css).
         document.querySelector('.race-table').dataset.view = view;
         $('arrival-heading').hidden = $('total-heading').hidden = view === 'participants';
-        $('place-heading').hidden = view !== 'scores' && view !== 'live';
+        $('place-heading').hidden = $('penalty-heading').hidden = view !== 'scores' && view !== 'live';
         $('list-add').hidden = $('import-button').hidden = $('list-template').hidden = view !== 'participants';
         $('show-podium-button').hidden = view === 'participants' || view === 'live';
         $('diploma-button').hidden = view !== 'results';
@@ -437,7 +445,7 @@ var PaceApp;
             const key = `${e.level}:${Pace.formatKey(e)}`, group = view === 'results' && (activeFormat === 'all' || !!race?.levels.length && !activeLevel) && previousFormat !== key ? `<tr class="ranking-group"><th colspan="7">${esc(Pace.groupLabel(e.level, Pace.formatLabel(e)))}</th></tr>` : '';
             previousFormat = key;
             return `${group}<tr>${view === 'results' ? `<td><span class="result-rank ${finalResults ? `rank-${ranks.get(e.id)}` : 'provisional'}">${ranks.get(e.id)}</span></td>` : ''}${nameCell(e)}<td>${e.level ? `<span class="level-badge level-${esc(e.level.toLowerCase())}">${esc(e.level)}</span>` : ''}<span class="format-badge ${e.format === 'DUO' ? 'duo' : ''} fmt-${Pace.formatKey(e)}">${esc(Pace.formatLabel(e))}</span></td><td class="recorded-time">${esc(departureText(e))}</td>${view === 'scores' || view === 'live' ? scoreCells(e) : view === 'participants' ? participantCells(e) : resultCells(e)}</tr>`;
-        }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : view === 'participants' ? 4 : 7}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
+        }).join('') || (entries.length || view === 'results' ? `<tr><td colspan="${view === 'results' ? 7 : view === 'participants' ? 4 : 8}" class="no-results">${view === 'results' ? 'Aucun résultat pour ce format à cette date.' : 'Aucun participant dans cette vue.'}</td></tr>` : '');
         const focusedEntries = view === 'results' ? list : entries;
         if (!focusedEntries.some(e => e.id === focusId))
             focusId = focusedEntries.find(e => !Pace.isResolved(e))?.id ?? focusedEntries.at(-1)?.id ?? '';
@@ -627,7 +635,7 @@ var PaceApp;
             const category = Pace.categoryFromGenders(format, selectedGender1, selectedGender2);
             if (race.levels.length && !race.levels.includes(selectedLevel))
                 throw Error('Choisissez le niveau : Open ou Pro.');
-            const entry = validateEntry({ id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, level: race.levels.length ? selectedLevel : '', gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
+            const entry = validateEntry({ penaltyMs: old?.penaltyMs ?? 0, id: old?.id ?? crypto.randomUUID(), bib: old?.bib ?? '', raceId: race.id, name1: get('name1'), name2: format === 'DUO' ? get('name2') : '', format, category, level: race.levels.length ? selectedLevel : '', gender1: selectedGender1, gender2: selectedGender2, scheduled, startedAt, arrivedAt, durationMs, status: old?.status ?? 'waiting', resultMode: old?.resultMode ?? 'arrival' });
             if (state.session.entries.some(e => e.id !== entry.id && identity(e) === identity(entry)))
                 throw Error('Ce participant ou duo est déjà inscrit à cette course.');
             if (!old && state.session.entries.length >= Pace.MAX_ENTRIES)
@@ -740,7 +748,7 @@ var PaceApp;
         try {
             const race = state.session.races.find(r => r.id === entry.raceId);
             const result = resultFromInput(entry, race);
-            $('arrival-preview').textContent = `Temps total : ${clock(result.durationMs)} · Arrivée : ${Pace.timeOfDay(result.arrivedAt)}${localDate(new Date(result.arrivedAt)) !== race.date ? ` (${new Date(result.arrivedAt).toLocaleDateString('fr-FR')})` : ''}`;
+            $('arrival-preview').textContent = `Temps total : ${clock(result.durationMs + (entry.penaltyMs ?? 0))}${entry.penaltyMs ? ` (pénalité ${Pace.penaltyText(entry.penaltyMs)} incluse)` : ''} · Arrivée : ${Pace.timeOfDay(result.arrivedAt)}${localDate(new Date(result.arrivedAt)) !== race.date ? ` (${new Date(result.arrivedAt).toLocaleDateString('fr-FR')})` : ''}`;
             $('arrival-preview').classList.add('complete');
         }
         catch (error) {
@@ -808,7 +816,7 @@ var PaceApp;
         $('photo-rank').hidden = !finalResults || !rank;
         $('photo-rank').textContent = finalResults && rank ? `${rank === 1 ? '1er' : `${rank}e`} · ${Pace.groupLabel(e.level, Pace.formatLabel(e))}` : '';
         $('photo-names').innerHTML = `${esc(e.name1)}${e.format === 'DUO' ? `<span>&</span>${esc(e.name2)}` : ''}`;
-        $('photo-time').textContent = clock(e.durationMs);
+        $('photo-time').textContent = clock(Pace.finalMs(e));
     }
     function recordOutcome(status) {
         const form = $('result-form');
@@ -892,7 +900,7 @@ var PaceApp;
         }
         const go = () => Diplome.print(list.map(({ e, rank, of }) => ({
             names: e.format === 'DUO' ? [e.name1, e.name2] : [e.name1], event: race.title, date: race.date, group: Pace.groupLabel(e.level, Pace.formatLabel(e)),
-            phase: 'Classement', rank, of, resultLabel: 'Temps', result: clock(e.durationMs)
+            phase: 'Classement', rank, of, resultLabel: 'Temps', result: clock(Pace.finalMs(e))
         })));
         if (Pace.eventResultsFinal(state.session, race))
             go();
@@ -934,7 +942,7 @@ var PaceApp;
         $('podium-category').textContent = Pace.groupLabel(podiumSelection.level, formatName(podiumSelection.format));
         $('podium-stage').innerHTML = [2, 1, 3].map(rank => {
             const entries = places.find(place => place.rank === rank)?.entries ?? [];
-            return `<article class="podium-stage-card stage-${rank}${entries.length ? '' : ' is-empty'}">${entries.length ? podiumAwardMarkup(rank) + entries.map(entry => `<div class="podium-stage-winner"><div class="podium-stage-names"><span>${esc(entry.name1)}</span>${entry.format === 'DUO' ? `<span class="podium-stage-join">&amp;</span><span>${esc(entry.name2)}</span>` : ''}</div><div class="podium-stage-time">${clock(entry.durationMs)}</div></div>`).join('') : '<div class="podium-stage-rank">—</div><p>Place non attribuée</p>'}</article>`;
+            return `<article class="podium-stage-card stage-${rank}${entries.length ? '' : ' is-empty'}">${entries.length ? podiumAwardMarkup(rank) + entries.map(entry => `<div class="podium-stage-winner"><div class="podium-stage-names"><span>${esc(entry.name1)}</span>${entry.format === 'DUO' ? `<span class="podium-stage-join">&amp;</span><span>${esc(entry.name2)}</span>` : ''}</div><div class="podium-stage-time">${clock(Pace.finalMs(entry))}</div></div>`).join('') : '<div class="podium-stage-rank">—</div><p>Place non attribuée</p>'}</article>`;
         }).join('');
     }
     function presentationActive() { return !!photoId || podiumSelection !== null; }
@@ -1064,17 +1072,17 @@ var PaceApp;
             }
             const rows = template
                 ? templateRows(race)
-                : [['Rang dans le format', 'Événement', 'Date', 'Participant 1', 'H/F participant 1', 'Participant 2', 'H/F participant 2', 'Format', 'Catégorie', 'Heure de départ', 'Heure d’arrivée', 'Arrivée le lendemain', 'Temps total', 'Statut', 'Classement']];
+                : [['Rang dans le format', 'Événement', 'Date', 'Participant 1', 'H/F participant 1', 'Participant 2', 'H/F participant 2', 'Format', 'Catégorie', 'Heure de départ', 'Heure d’arrivée', 'Arrivée le lendemain', 'Temps de course', 'Pénalité', 'Temps total', 'Statut', 'Classement']];
             if (!template && race.levels.length)
                 rows[0].push('Niveau');
             const ranked = view === 'results' ? resultRanking() : Pace.eventRankingGroups(race, raceEntries()).flatMap(g => Pace.rankingFor(state.session, g.format, race.date, g.level)), ranks = new Map(ranked.map(r => [r.entry.id, r.rank]));
             if (!template)
                 for (const e of view === 'results' ? ranked.map(r => r.entry) : raceEntries()) {
                     const r = state.session.races.find(item => item.id === e.raceId);
-                    rows.push([ranks.get(e.id) ?? '', r.title, r.date, e.name1, e.gender1, e.name2, e.gender2, e.format, e.category, departureText(e), e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt), e.arrivedAt !== null && e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? 'Oui' : '', e.durationMs === null ? '' : clock(e.durationMs), Pace.statusLabel(e), Pace.eventResultsFinal(state.session, r) ? 'Définitif' : 'Provisoire', ...(race.levels.length ? [e.level] : [])]);
+                    rows.push([ranks.get(e.id) ?? '', r.title, r.date, e.name1, e.gender1, e.name2, e.gender2, e.format, e.category, departureText(e), e.arrivedAt === null ? '' : Pace.timeOfDay(e.arrivedAt), e.arrivedAt !== null && e.startedAt !== null && localDate(new Date(e.arrivedAt)) !== localDate(new Date(e.startedAt)) ? 'Oui' : '', e.durationMs === null ? '' : clock(e.durationMs), e.penaltyMs ? clock(e.penaltyMs) : '', e.durationMs === null ? '' : clock(Pace.finalMs(e)), Pace.statusLabel(e), Pace.eventResultsFinal(state.session, r) ? 'Définitif' : 'Provisoire', ...(race.levels.length ? [e.level] : [])]);
                 }
             const book = XLSX.utils.book_new(), sheet = XLSX.utils.aoa_to_sheet(rows);
-            sheet['!cols'] = (template ? [18, 26, 26, 21, 12] : [10, 32, 16, 26, 19, 26, 19, 12, 12, 21, 21, 24, 16, 20, 16]).map(wch => ({ wch }));
+            sheet['!cols'] = (template ? [18, 26, 26, 21, 12] : [10, 32, 16, 26, 19, 26, 19, 12, 12, 21, 21, 24, 16, 12, 16, 20, 16]).map(wch => ({ wch }));
             XLSX.utils.book_append_sheet(book, sheet, 'Participants');
             XLSX.writeFile(book, template ? 'soundcrossing-modele.xlsx' : `pace-resultats-${race.date}.xlsx`);
         }
@@ -1287,6 +1295,27 @@ var PaceApp;
             toast(error instanceof Error ? error.message : 'Heure invalide.', true);
         }
     }
+    function savePenalty(input) {
+        const id = input.dataset.penalty ?? '', entry = entryById(id);
+        if (!entry || entry.status === 'withdrawn' || entry.status === 'abandoned')
+            return;
+        try {
+            // Case vide ou 00:00 = pas de pénalité.
+            const p = Saisie.parts(input.value, true), ms = p ? (p[1] * 60 + p[2]) * 1000 : 0;
+            if (ms > Pace.MAX_PENALTY_MS)
+                throw Error('Pénalité : 99:59 au maximum.');
+            if (ms === (entry.penaltyMs ?? 0)) {
+                input.value = ms ? Saisie.fromMs(ms, true) : '';
+                return;
+            }
+            if (commit(ms ? `pénalité de ${label(entry)}` : `retrait de la pénalité de ${label(entry)}`, session => { session.entries.find(e => e.id === id).penaltyMs = ms; }))
+                toast(ms ? `Pénalité ${Pace.penaltyText(ms)} ajoutée au temps de ${label(entry)}.` : 'Pénalité retirée.');
+        }
+        catch (error) {
+            input.classList.add('invalid');
+            toast(error instanceof Error ? error.message : 'Pénalité invalide.', true);
+        }
+    }
     function setStatusInline(id, status) {
         const entry = entryById(id);
         if (!entry)
@@ -1304,7 +1333,7 @@ var PaceApp;
         if (!entry)
             return;
         ask('Effacer le résultat ?', `${label(entry)} : l’heure de départ est conservée. L’arrivée et le temps total sont retirés du classement.`, () => {
-            commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; });
+            commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; e.penaltyMs = 0; });
         }, 'Effacer le résultat');
     }
     function deleteEntryInline(id) {
@@ -1352,9 +1381,16 @@ var PaceApp;
     // La case d’heure change à chaque bloc tapé : on enregistre seulement en quittant la case (ou avec Entrée).
     $('entries-body').addEventListener('focusout', event => { const input = event.target; if (input.dataset.arrival)
         window.setTimeout(() => { if (input.isConnected)
-            saveArrival(input); }); });
+            saveArrival(input); }); if (input.dataset.penalty)
+        window.setTimeout(() => { if (input.isConnected)
+            savePenalty(input); }); });
     $('entries-body').addEventListener('keydown', event => {
         const input = event.target;
+        if (event.key === 'Enter' && input.dataset.penalty) {
+            event.preventDefault();
+            input.blur();
+            return;
+        }
         if (event.key !== 'Enter' || !input.dataset.arrival)
             return;
         event.preventDefault();
@@ -1482,7 +1518,7 @@ var PaceApp;
         if (!entry)
             return;
         ask('Retirer le résultat ?', 'L’heure de départ sera conservée. L’arrivée et le temps total seront retirés du classement.', () => {
-            if (commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; }, $('result-form')))
+            if (commit(`retrait du résultat de ${label(entry)}`, session => { const e = session.entries.find(e => e.id === id); e.status = 'waiting'; e.arrivedAt = null; e.durationMs = null; e.penaltyMs = 0; }, $('result-form')))
                 $('result-dialog').close();
         }, 'Retirer le résultat');
     });
