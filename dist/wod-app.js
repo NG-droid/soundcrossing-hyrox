@@ -555,6 +555,7 @@ var Wod;
             .filter(s => s.list.length);
     }
     // Feuilles de jury à imprimer, sur le modèle des scorecards CrossFit : une par participant, ou vierge.
+    const INSTA = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".5"/></svg>';
     const PRINTER = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>';
     // Ligne à remplir : libellé, trait, unité.
     const line = (label, unit = '', short = false) => `<div class="sheet-field${short ? ' short' : ''}"><span>${label}</span><i></i>${unit ? `<em>${unit}</em>` : ''}</div>`;
@@ -740,6 +741,23 @@ var Wod;
         else
             go();
     }
+    // Images Instagram du classement affiché (général, qualifs ou Finale) : une par catégorie, suivant la recherche.
+    function openInstagram() {
+        const phase = rankingTab === 'final' ? 'final' : 'qualif', wods = Wod.phaseWorkouts(state, phase);
+        const label = phase === 'final' ? 'Finale' : Wod.hasFinal(state) ? 'Classement qualifs' : 'Classement général';
+        const cards = Wod.usedGroups(state).map(g => {
+            const pending = Wod.pendingScores(state, g, phase);
+            return { event: state.title, date: state.date, kicker: `${label} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, group: g,
+                resultLabel: state.method === 'places' ? 'Total des places' : 'Points',
+                rows: Wod.generalRanking(state, g, phase).filter(r => found(r.athlete) && wods.some(w => r.places[w.id] !== null))
+                    .map(r => ({ rank: r.rank, name: Wod.athleteLabel(r.athlete), result: state.method === 'places' ? String(r.total) : `${r.total} pts` })) };
+        }).filter(c => c.rows.length);
+        if (!cards.length) {
+            toast('Aucun participant classé.');
+            return;
+        }
+        Insta.open(cards);
+    }
     function renderRanking() {
         const levels = levelsUsed();
         if (!levels.includes(rankingLevel))
@@ -775,7 +793,7 @@ var Wod;
             const qualified = state.athletes.filter(a => Wod.group(a) === cat && Wod.isFinalist(state, a)).length;
             const note = phase === 'final' ? `Points remis à zéro : seuls les WOD de finale comptent. Égalité : meilleure place sur le dernier WOD de finale, puis classement des qualifs.${qualified ? '' : ' Aucun qualifié dans cette catégorie : qualifiez-les dans « Classement qualifs ».'}`
                 : `${Wod.rulesText(state).slice(0, 3).join(' ')}${final ? ` ${qualified} qualifié(s) pour la Finale.` : ''}`;
-            heading(`${name} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${note}`, `<button class="button" data-action="diplomas" title="Un diplôme par participant classé, toutes catégories (suivant la recherche), à imprimer ou enregistrer en PDF">${PRINTER}Diplômes</button>${phase === 'qualif' && final ? '<button class="button primary" data-action="qualify">Qualifier pour la Finale</button>' : ''}`);
+            heading(`${name} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, `${pending ? `${pending} score(s) à saisir dans cette catégorie. ` : ''}${note}`, `<button class="button" data-action="diplomas" title="Un diplôme par participant classé, toutes catégories (suivant la recherche), à imprimer ou enregistrer en PDF">${PRINTER}Diplômes</button><button class="button" data-action="instagram" title="Une image par catégorie, prête à publier sur Instagram">${INSTA}Instagram</button>${phase === 'qualif' && final ? '<button class="button primary" data-action="qualify">Qualifier pour la Finale</button>' : ''}`);
             const cell = (w, r) => r.places[w.id] !== null ? `${r.places[w.id]}<sup>e</sup>` : `<span class="muted">${Wod.STATUS_LABELS[Wod.scoreStatus(w, state.scores[w.id]?.[r.athlete.id])]}</span>`;
             podiumFooter(ranking.length, pending);
             const pick = (a) => `<td>${Wod.isFinalist(state, a) ? `<button class="button compact finalist-on" data-unqualify="${a.id}" title="Retirer de la Finale">✓ Qualifié</button>` : `<button class="button compact" data-qualify-one="${a.id}">Qualifier</button>`}</td>`;
@@ -1243,6 +1261,8 @@ var Wod;
                 printSheets(true);
             else if (d.action === 'diplomas')
                 printDiplomas();
+            else if (d.action === 'instagram')
+                openInstagram();
             else if (d.action === 'only-todo') {
                 onlyTodo = !onlyTodo;
                 render();

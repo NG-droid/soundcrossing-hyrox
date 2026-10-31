@@ -589,3 +589,13 @@ html.chargement body>:not(.club-header){visibility:hidden;animation:sc-montrer 0
 /* Onglet Scores : la colonne Pénalité (case mm:ss plus courte) prend la place sur le nom. */
 .race-table:is([data-view=scores],[data-view=live]) th.name-col{width:22%!important}
 .race-table[data-view] input.time-box[data-penalty]{width:112px}
+/* Images Instagram (Classements, Hyrox + WOD) : aperçus cliquables, une image par catégorie. */
+.insta-modal{width:min(980px,94vw)}
+.insta-previews{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:18px;max-height:52vh;overflow:auto;padding:4px 4px 8px;margin:6px 0 4px}
+.insta-previews figure{margin:0;text-align:center}
+.insta-previews figure>button{display:block;width:100%;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:none;cursor:pointer;box-shadow:0 3px 10px #0000002e;transition:transform .15s ease-out,box-shadow .15s ease-out}
+.insta-previews figure>button:hover{transform:translateY(-2px);box-shadow:0 6px 16px #00000040}
+.insta-previews img{display:block;width:100%;height:auto}
+.insta-previews figcaption{margin-top:8px;font-weight:700;font-size:14px}
+.insta-previews figcaption small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+@media (prefers-reduced-motion:reduce){.insta-previews figure>button{transition:none}}
