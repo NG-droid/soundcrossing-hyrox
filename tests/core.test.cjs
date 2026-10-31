@@ -89,8 +89,22 @@ test('final CSV refuses pending results and exports all category ranks and forfe
   assert.equal(rows.length, 4);
   assert.deepEqual(rows.slice(1).map(row => row[2]), ['Rapide', 'Lent', 'Forfait']);
   assert.deepEqual(rows.slice(1).map(row => row[0]), ['1', '2', '']);
-  assert.equal(rows[3][6], ''); assert.equal(rows[3][7], 'Forfait');
-  assert.equal(rows[1][6], '01:00:30');
+  assert.equal(rows[0][7], 'Pénalité'); assert.equal(rows[0][8], 'Temps total');
+  assert.equal(rows[3][8], ''); assert.equal(rows[3][9], 'Forfait');
+  assert.equal(rows[1][6], '01:00:30'); assert.equal(rows[1][8], '01:00:30');
+});
+test('penalty is added to the race time and changes the ranking', () => {
+  const r = race({ format: 'SOLO' });
+  const e = (id, durationMs, penaltyMs) => P.validateEntry(entry({ id, raceId: r.id, name1: id, category: 'H', gender1: 'H', durationMs, status: 'finished', penaltyMs }));
+  const s = { ...session([]), races: [r], entries: [e('fast', 3600000, 120000), e('slow', 3660000, 0), e('tie', 3660000, undefined)] };
+  assert.equal(P.finalMs(s.entries[0]), 3720000);
+  assert.equal(s.entries[2].penaltyMs, 0);
+  assert.deepEqual(Array.from(P.rankingFor(s, 'H', r.date), x => [x.entry.id, x.rank]), [['slow', 1], ['tie', 1], ['fast', 3]]);
+  assert.equal(P.penaltyText(90000), '+01:30'); assert.equal(P.penaltyText(0), '');
+  assert.throws(() => e('bad', 3600000, -1000), /Pénalité/);
+  assert.equal(P.setOutcome(s.entries[0], 'withdrawn').penaltyMs, 0);
+  const row = P.finalResultsCSV({ ...s, entries: [s.entries[0]] }, r);
+  assert.match(row, /"01:00:00";"00:02:00";"01:02:00"/);
 });
 test('abandon and forfait preserve the registration but cannot retain a timed result', () => {
   const finished = P.validateEntry(entry({ status: 'finished', startedAt: 1000000, arrivedAt: 1060000, durationMs: 60000 }));

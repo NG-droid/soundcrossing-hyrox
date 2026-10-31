@@ -81,13 +81,13 @@ namespace Ecran {
     const slides = Pace.eventRankingGroups(race, entries).flatMap(({ level, format }): Slide[] => {
       const inGroup = entries.filter(e => Pace.formatKey(e) === format && (e.level ?? '') === level);
       if (!inGroup.length) return [];
-      const ranking = Pace.rankingFor(session, format, race.date, level), best = ranking[0]?.entry.durationMs ?? 0;
+      const ranking = Pace.rankingFor(session, format, race.date, level), best = ranking[0] ? Pace.finalMs(ranking[0].entry) ?? 0 : 0;
       const sample = inGroup[0] as Pace.Entry;
       return [{
         key: `${level}:${format}`, kicker: final ? 'CLASSEMENT FINAL' : 'CLASSEMENT PROVISOIRE',
         title: Pace.groupLabel(level, Pace.formatLabel(sample)), columns: ['RANG', sample.format === 'DUO' ? 'DUO' : 'PARTICIPANT', 'TEMPS', 'ÉCART'],
         rows: ranking.map(({ entry, rank }) => ({ lead: rankLead(rank, final), top: rank, names: nameParts(entry.format, entry.name1, entry.name2),
-          cells: [Pace.clock(entry.durationMs ?? 0), entry.durationMs === best ? '—' : gap((entry.durationMs ?? 0) - best)] })),
+          cells: [Pace.clock(Pace.finalMs(entry) ?? 0), Pace.finalMs(entry) === best ? '—' : gap((Pace.finalMs(entry) ?? 0) - best)] })),
         empty: `${inGroup.length} inscrit(s) · premières arrivées à venir`,
       }];
     });
