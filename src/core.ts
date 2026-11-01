@@ -81,6 +81,13 @@ namespace Pace {
   }
   export const LEVELS = ['Open', 'Pro'];
   // « Open · Duo HH » quand l’événement a des niveaux, sinon « Duo HH ».
+  // Nom affiché en public (image Instagram, écran public) : prénom + initiale du nom, « Julien Martin » → « Julien M. ».
+  // Le nom complet reste dans l’app, les diplômes et l’Excel. Un prénom seul reste tel quel.
+  export function nomCourt(name: string): string {
+    const [first, ...rest] = name.trim().split(/\s+/);
+    const initial = rest.find(w => /\p{L}/u.test(w))?.match(/\p{L}/u)?.[0];
+    return initial ? `${first} ${initial.toLocaleUpperCase('fr-FR')}.` : first ?? '';
+  }
   export function groupLabel(level: string, formatText: string): string { return level ? `${level} · ${formatText}` : formatText; }
   export function formatLabel(entry: Entry): string {
     return entry.format === 'DUO' ? `Duo ${entry.category}` : entry.category ? `Solo ${entry.category}` : 'Solo · à préciser';

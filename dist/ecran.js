@@ -38,7 +38,8 @@ var Ecran;
         const s = Math.round(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, pad = (n) => String(n).padStart(2, '0');
         return `+${h ? `${h}:${pad(m)}` : m}:${pad(s % 60)}`;
     }
-    const nameParts = (format, name1, name2) => format === 'DUO' ? [name1, name2] : [name1];
+    // Écran public : prénom + initiale du nom seulement (Pace.nomCourt).
+    const nameParts = (format, name1, name2) => (format === 'DUO' ? [name1, name2] : [name1]).map(Pace.nomCourt);
     const rankLead = (rank, final) => `<b class="rank${final ? ` rank-${rank}` : ' provisional'}">${rank}</b>`;
     function theme() {
         let name = params.get('theme') ?? '';
