@@ -51,7 +51,7 @@ namespace Diplome {
 // Images Instagram du classement, partagées par l’Hyrox et le WOD : une image PNG par catégorie,
 // au format post (1080 × 1350) ou story (1080 × 1920), aux couleurs du thème (Sombre ou Clair).
 namespace Insta {
-  export interface Row { rank: number; name: string; result: string; }
+  export interface Row { rank: number; names: string[]; result: string; } // noms complets : l’image n’affiche que prénom + initiale
   export interface Card {
     event: string; date: string;
     kicker: string;          // « Classement final », « Finale provisoire »…
@@ -134,7 +134,7 @@ namespace Insta {
       ctx.fillText(r.result, x1 - 28, top + hh / 2 + 2);
       const resultW = ctx.measureText(r.result).width;
       ctx.textAlign = 'left'; ctx.fillStyle = p.ink;
-      ctx.fillText(fit(ctx, r.name, x1 - 28 - resultW - 40 - (px + pw + 28), size, 26), px + pw + 28, top + hh / 2 + 2);
+      ctx.fillText(fit(ctx, r.names.map(Pace.nomCourt).join(' & '), x1 - 28 - resultW - 40 - (px + pw + 28), size, 26), px + pw + 28, top + hh / 2 + 2);
       y += rh;
     }
     if (more) { ctx.textAlign = 'center'; ctx.fillStyle = p.muted; ctx.font = `26px ${FONT}`; ctx.fillText(`+ ${more} autre${more > 1 ? 's' : ''} participant${more > 1 ? 's' : ''} classé${more > 1 ? 's' : ''}`, W / 2, y + 30); }

@@ -549,7 +549,7 @@ namespace Wod {
       return { event: state.title, date: state.date, kicker: `${label} ${pending ? 'provisoire' : phase === 'final' ? 'définitive' : 'définitif'}`, group: g,
         resultLabel: state.method === 'places' ? 'Total des places' : 'Points',
         rows: generalRanking(state, g, phase).filter(r => found(r.athlete) && wods.some(w => r.places[w.id] !== null))
-          .map(r => ({ rank: r.rank, name: athleteLabel(r.athlete), result: state.method === 'places' ? String(r.total) : `${r.total} pts` })) };
+          .map(r => ({ rank: r.rank, names: r.athlete.format === 'DUO' ? [r.athlete.name1, r.athlete.name2] : [r.athlete.name1], result: state.method === 'places' ? String(r.total) : `${r.total} pts` })) };
     }).filter(c => c.rows.length);
     if (!cards.length) { toast('Aucun participant classé.'); return; }
     Insta.open(cards);

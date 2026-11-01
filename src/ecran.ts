@@ -31,7 +31,8 @@ namespace Ecran {
     const s = Math.round(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, pad = (n: number): string => String(n).padStart(2, '0');
     return `+${h ? `${h}:${pad(m)}` : m}:${pad(s % 60)}`;
   }
-  const nameParts = (format: string, name1: string, name2: string): string[] => format === 'DUO' ? [name1, name2] : [name1];
+  // Écran public : prénom + initiale du nom seulement (Pace.nomCourt).
+  const nameParts = (format: string, name1: string, name2: string): string[] => (format === 'DUO' ? [name1, name2] : [name1]).map(Pace.nomCourt);
   const rankLead = (rank: number, final: boolean): string => `<b class="rank${final ? ` rank-${rank}` : ' provisional'}">${rank}</b>`;
 
   function theme(): void {

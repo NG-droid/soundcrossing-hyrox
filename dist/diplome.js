@@ -176,7 +176,7 @@ var Insta;
             const resultW = ctx.measureText(r.result).width;
             ctx.textAlign = 'left';
             ctx.fillStyle = p.ink;
-            ctx.fillText(fit(ctx, r.name, x1 - 28 - resultW - 40 - (px + pw + 28), size, 26), px + pw + 28, top + hh / 2 + 2);
+            ctx.fillText(fit(ctx, r.names.map(Pace.nomCourt).join(' & '), x1 - 28 - resultW - 40 - (px + pw + 28), size, 26), px + pw + 28, top + hh / 2 + 2);
             y += rh;
         }
         if (more) {

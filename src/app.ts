@@ -626,7 +626,7 @@ namespace PaceApp {
     const cards = Pace.eventRankingGroups(race, raceEntries()).filter(g => (!activeLevel || g.level === activeLevel) && (activeFormat === 'all' || g.format === activeFormat)).map(g => ({
       event: race.title, date: race.date, kicker: final ? 'Classement final' : 'Classement provisoire', group: Pace.groupLabel(g.level, formatName(g.format)), resultLabel: 'Temps',
       rows: Pace.rankingFor(state.session, g.format, race.date, g.level).filter(r => shown.has(r.entry.id) && r.entry.durationMs !== null)
-        .map(r => ({ rank: r.rank, name: r.entry.format === 'DUO' ? `${r.entry.name1} & ${r.entry.name2}` : r.entry.name1, result: clock(Pace.finalMs(r.entry)!) })),
+        .map(r => ({ rank: r.rank, names: r.entry.format === 'DUO' ? [r.entry.name1, r.entry.name2] : [r.entry.name1], result: clock(Pace.finalMs(r.entry)!) })),
     })).filter(c => c.rows.length);
     if (!cards.length) { toast('Aucun participant classé avec ces filtres.'); return; }
     Insta.open(cards);
